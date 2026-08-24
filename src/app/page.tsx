@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Clock, Lock, MessageSquareText, ShieldCheck } from 'lucide-react'
+import { Clock, HandCoins, Lock, MessageSquareText, ShieldCheck } from 'lucide-react'
 import { today } from '@/lib/dates'
 import { Logo } from '@/components/brand/Logo'
 import { LeadForm } from '@/components/public/LeadForm'
@@ -22,10 +22,19 @@ import { LeadForm } from '@/components/public/LeadForm'
  */
 export const dynamic = 'force-dynamic'
 
+/**
+ * Las tres primeras quitan fricción del formulario. La cuarta quita la
+ * objeción que frena a quien acaba de quedarse sin ingreso: cuánto le va a
+ * costar. Por eso va al final, ya con el formulario a la vista.
+ */
 const REASSURANCES = [
   { icon: Clock, text: 'Te toma menos de dos minutos.' },
   { icon: MessageSquareText, text: 'Solo te pedimos lo indispensable.' },
   { icon: Lock, text: 'Tu información es privada y no se comparte.' },
+  {
+    icon: HandCoins,
+    text: 'Asesorarte es gratis: si ganas tu caso recibimos un porcentaje, y si no ganas no pagas nada.',
+  },
 ]
 
 export default function PublicPage() {
