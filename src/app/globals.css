@@ -1,0 +1,323 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * =========================================================================
+ *  DESIGN TOKENS — IDENTIDAD OFICIAL DE SOLO LABORAL
+ * =========================================================================
+ *  Fuente: sololaboral.mx (sitio oficial del despacho). Los tres colores de
+ *  marca se tomaron TAL CUAL de las variables del sitio y del SVG del
+ *  logotipo; ninguno se inventó ni se aproximó.
+ *
+ *      --c-primary   #00A9F3   cian
+ *      --c-secondary #00E7AD   menta
+ *      --c-text      #2B346B   azul marino
+ *
+ *  Los valores van como canales RGB ("43 52 107") y no como hex, para que
+ *  Tailwind pueda aplicar opacidad sobre el mismo token (bg-sl-primary/10).
+ *  Se usan siempre vía rgb(var(--sl-*)).
+ *
+ *  ASIGNACIÓN DE ROLES Y CONTRASTE
+ *  Ni el cian (2.64:1) ni la menta (1.61:1) son legibles como texto sobre
+ *  blanco. Por eso:
+ *    · el AZUL MARINO de marca conduce ambas caras del producto (11.63:1) —
+ *      títulos, botones, enlaces;
+ *    · el CIAN y la MENTA quedan íntegros como acento en áreas grandes que no
+ *      son texto: filetes, viñetas, el hilo de la página pública;
+ *    · éxito/aviso/peligro son colores de ESTADO, no de marca. "Éxito" se
+ *      derivó oscureciendo la menta para conservar el matiz del despacho.
+ *  Todos los tonos que se usan como texto pasan WCAG AA (≥4.5:1).
+ *  Detalle completo en docs/BRAND.md.
+ */
+:root {
+  /* --- Colores de marca, sin alterar --- */
+  --sl-primary: 43 52 107; /* #2B346B azul marino oficial */
+  --sl-secondary: 0 169 243; /* #00A9F3 cian oficial */
+  --sl-accent: 0 231 173; /* #00E7AD menta oficial */
+
+  /* Versión oscurecida del cian, para texto y etiquetas (el cian puro da 2.64:1) */
+  --sl-secondary-strong: 0 118 170; /* #0076AA   5.03:1 */
+
+  /* --- Superficies, derivadas del matiz del azul marino --- */
+  --sl-primary-soft: 233 237 247; /* #E9EDF7 */
+  --sl-background: 244 246 251; /* #F4F6FB */
+  --sl-surface: 255 255 255; /* #FFFFFF */
+  --sl-border: 221 226 239; /* #DDE2EF */
+
+  /* --- Texto --- */
+  --sl-text: 19 14 34; /* #130E22  18.86:1 */
+  --sl-muted: 90 97 131; /* #5A6183   6.05:1 */
+
+  /* --- Estados (no son colores de marca) --- */
+  --sl-success: 0 119 90; /* #00775A  menta de marca oscurecida, 5.55:1 */
+  --sl-warning: 151 89 11; /* #97590B   5.60:1 */
+  --sl-danger: 206 17 17; /* #CE1111   5.66:1 */
+
+  /* Curva única de todo el movimiento del producto. Ver el bloque MOVIMIENTO. */
+  --sl-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Poppins es la tipografía del sitio oficial; se sirve local (next/font). */
+  --sl-font-sans:
+    var(--font-poppins), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: rgb(var(--sl-background));
+  color: rgb(var(--sl-text));
+  font-family: var(--sl-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Foco visible siempre: mucha gente llega a este formulario con teclado. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--sl-primary));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@layer components {
+  .sl-card {
+    @apply rounded-sl border border-sl-border bg-sl-surface shadow-sl;
+  }
+
+  .sl-label {
+    @apply mb-1.5 block text-sm font-medium text-sl-text;
+  }
+
+  /*
+   * `text-base` en móvil no es una decisión estética: por debajo de 16px, iOS
+   * hace zoom al enfocar el campo y descuadra el formulario completo. En
+   * pantallas grandes vuelve a 14px, que es la densidad del portal.
+   */
+  .sl-input {
+    @apply w-full rounded-sl border border-sl-border bg-sl-surface px-3 py-2.5 text-base
+      text-sl-text placeholder:text-sl-muted disabled:bg-sl-primary-soft disabled:text-sl-muted
+      sm:py-2 sm:text-sm;
+  }
+
+  .sl-hint {
+    @apply mt-1 text-xs text-sl-muted;
+  }
+
+  .sl-error {
+    @apply mt-1 text-xs font-medium text-sl-danger;
+  }
+
+  /*
+   * En el teléfono no existe `hover`: sin un estado `active` el botón no
+   * acusa recibo del toque y la gente vuelve a tocar. De ahí `active:` en
+   * todas las variantes, y una altura mínima de 44px — el objetivo táctil
+   * que recomienda Apple y que aquí no es un lujo: media empresa entra
+   * desde el celular.
+   */
+  .sl-btn {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-sl px-4 py-2.5
+      text-sm font-medium transition-[background-color,box-shadow,transform] duration-150
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .sl-btn-primary {
+    @apply sl-btn bg-sl-primary text-white shadow-sl hover:bg-sl-primary/90
+      active:scale-[.99] active:bg-sl-primary;
+  }
+
+  .sl-btn-secondary {
+    @apply sl-btn border border-sl-border bg-sl-surface text-sl-text hover:bg-sl-primary-soft
+      active:scale-[.99] active:bg-sl-primary-soft;
+  }
+
+  .sl-btn-ghost {
+    @apply sl-btn text-sl-primary hover:bg-sl-primary-soft active:bg-sl-primary-soft;
+  }
+
+  /* Botón principal del formulario público: ancho completo y alcanzable con el pulgar. */
+  .sl-btn-lg {
+    @apply w-full px-5 py-3.5 text-base;
+  }
+
+  /* Acción compacta dentro de una fila o tarjeta de la lista. */
+  .sl-btn-icon {
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sl border
+      border-sl-border bg-sl-surface text-sl-primary transition-colors hover:bg-sl-primary-soft
+      active:bg-sl-primary-soft sm:h-9 sm:w-9;
+  }
+
+  .sl-th {
+    @apply px-4 py-2.5 text-left align-bottom text-xs font-semibold uppercase tracking-wide
+      text-sl-muted;
+  }
+
+  .sl-td {
+    @apply px-4 py-3 text-sm text-sl-text;
+  }
+
+  /*
+   * Filete de marca: la única superficie donde el cian y la menta aparecen
+   * puros, porque no son texto y no tienen que cumplir contraste de lectura.
+   */
+  .sl-rule {
+    @apply h-1 w-full bg-gradient-to-r from-sl-primary via-sl-secondary to-sl-accent;
+  }
+
+  /*
+   * Lavado de marca del encabezado público. Mismo argumento que el filete: es
+   * superficie, no texto, así que el cian y la menta pueden ir puros — aquí a
+   * opacidad muy baja para que el marino siga conduciendo la lectura.
+   */
+  .sl-wash {
+    background-image:
+      radial-gradient(60rem 22rem at 12% -8%, rgb(var(--sl-secondary) / 0.13), transparent 62%),
+      radial-gradient(44rem 20rem at 96% 6%, rgb(var(--sl-accent) / 0.12), transparent 60%);
+  }
+
+  /*
+   * Motivo de confianza.
+   *
+   * En el teléfono es una línea desnuda: ahí cada píxel que gasta el encabezado
+   * es un píxel que aleja el primer campo del formulario, y tres tarjetas antes
+   * de empezar a escribir empujaban el formulario fuera de la pantalla. El
+   * marco y el fondo aparecen a partir de `lg`, donde el relato vive en su
+   * propia columna y sí hay sitio para darles cuerpo.
+   */
+  .sl-chip {
+    @apply flex items-center gap-2.5 text-sm text-sl-text lg:rounded-sl lg:border
+      lg:border-sl-border/70 lg:bg-sl-surface/70 lg:px-3 lg:py-2.5 lg:backdrop-blur-sm;
+  }
+
+  .sl-chip-icon {
+    @apply flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sl-secondary/10
+      text-sl-secondary-strong lg:h-8 lg:w-8;
+  }
+
+  /* Rótulo de sección dentro de una ficha. */
+  .sl-eyebrow {
+    @apply text-xs font-semibold uppercase tracking-wide text-sl-muted;
+  }
+}
+
+/*
+ * =========================================================================
+ *  MOVIMIENTO
+ * =========================================================================
+ *  Reglas de la casa:
+ *
+ *  · Nada se mueve más de ~6px ni dura más de ~400ms. La animación aquí
+ *    sirve para explicar de dónde salió algo, no para lucirse: quien usa esto
+ *    es un abogado revisando a quién llamar, o alguien que acaba de perder su
+ *    trabajo. Una entrada vistosa en esas dos pantallas es una falta de tacto.
+ *
+ *  · La curva es la misma en todo (`--sl-ease`, un ease-out pronunciado):
+ *    arranca rápido y frena suave, que es lo que se lee como "fluido".
+ *
+ *  · Todo esto se apaga entero con `prefers-reduced-motion` (final del
+ *    archivo). No es opcional: el movimiento puede provocar mareo real, y
+ *    ninguna de estas animaciones carga información que se pierda al quitarla.
+ */
+@keyframes sl-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sl-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Brillo que recorre el esqueleto de carga. */
+@keyframes sl-shimmer {
+  from {
+    background-position: -150% 0;
+  }
+  to {
+    background-position: 250% 0;
+  }
+}
+
+/* Barra indeterminada: no finge saber cuánto falta, solo que algo pasa. */
+@keyframes sl-bar {
+  0% {
+    transform: translateX(-100%) scaleX(0.4);
+  }
+  50% {
+    transform: translateX(30%) scaleX(0.7);
+  }
+  100% {
+    transform: translateX(220%) scaleX(0.4);
+  }
+}
+
+@layer components {
+  .sl-in {
+    animation: sl-fade-up 0.38s var(--sl-ease) both;
+  }
+
+  .sl-in-fade {
+    animation: sl-fade-in 0.32s var(--sl-ease) both;
+  }
+
+  /*
+   * Contenido que se está revalidando. Se atenúa en vez de desaparecer: la
+   * lista anterior sigue siendo cierta hasta que llega la nueva, y vaciar la
+   * pantalla para volver a llenarla con casi lo mismo es el parpadeo que
+   * hace sentir lenta una app que no lo es.
+   */
+  .sl-refreshing {
+    @apply pointer-events-none opacity-55;
+  }
+
+  .sl-settled {
+    @apply opacity-100;
+  }
+
+  .sl-refreshing,
+  .sl-settled {
+    transition: opacity 0.22s var(--sl-ease);
+  }
+
+  /* Bloque gris con brillo, del tamaño del contenido que va a llegar. */
+  .sl-skeleton {
+    @apply rounded bg-sl-border/70;
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(var(--sl-surface) / 0.85) 50%,
+      transparent 100%
+    );
+    background-size: 150% 100%;
+    background-repeat: no-repeat;
+    animation: sl-shimmer 1.5s var(--sl-ease) infinite;
+  }
+}
+
+/*
+ * Apagado total del movimiento. Va fuera de `@layer` y con `!important` a
+ * propósito: tiene que ganarle a cualquier utilidad de Tailwind que se
+ * escriba después, incluidas las que aún no existen.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
