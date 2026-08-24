@@ -31,10 +31,7 @@ const REASSURANCES = [
   { icon: Clock, text: 'Te toma menos de dos minutos.' },
   { icon: MessageSquareText, text: 'Solo te pedimos lo indispensable.' },
   { icon: Lock, text: 'Tu información es privada y no se comparte.' },
-  {
-    icon: HandCoins,
-    text: 'Asesorarte es gratis: si ganas tu caso recibimos un porcentaje, y si no ganas no pagas nada.',
-  },
+  { icon: HandCoins, text: 'Pide asesoramiento sobre tu caso, es gratis.' },
 ]
 
 export default function PublicPage() {
