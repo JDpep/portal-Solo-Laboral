@@ -115,7 +115,7 @@ export async function seedIfEmpty(): Promise<void> {
   store.users.push(...users)
 
   const submittedOn = today()
-  for (const demo of DEMO_SUBMISSIONS) {
+  for (const [index, demo] of DEMO_SUBMISSIONS.entries()) {
     const dismissalDate = addDays(submittedOn, -demo.daysAgo)
     // Los ejemplos pasan por el MISMO motor que los envíos reales: si la regla
     // cambia, la demo cambia con ella y no queda un dato sembrado que mienta.
@@ -125,6 +125,12 @@ export async function seedIfEmpty(): Promise<void> {
       submittedOn,
     })
     await createLead({
+      // Id estable y derivado de la posición: todas las instancias siembran
+      // los mismos, así el enlace del listado abre en cualquiera de ellas.
+      id: `lead_demo_${index + 1}`,
+      // Sello fijo y separado un minuto por posición: da un orden estable y
+      // legible, idéntico en todas las instancias. Un envío real no lo manda.
+      submittedAt: `${submittedOn}T12:${String(index).padStart(2, '0')}:00.000Z`,
       fullName: demo.fullName,
       phone: demo.phone,
       state: demo.state,

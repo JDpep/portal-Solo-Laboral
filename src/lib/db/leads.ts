@@ -25,6 +25,27 @@ export interface CreateLeadInput {
   qualificationStatus: QualificationStatus
   qualificationReason: QualificationReason
   dismissalDaysAtSubmission: number
+  /**
+   * Solo lo fija la semilla de Fase 1. Un envío real NUNCA lo manda: su id lo
+   * genera el repositorio.
+   *
+   * Existe porque el almacén vive en memoria y en producción hay muchas
+   * instancias, cada una con su propia copia sembrada. Con ids generados al
+   * vuelo, el listado que pinta una instancia enlazaba a casos que otra no
+   * conocía, y el detalle respondía 404. Sembrar ids estables hace que todas
+   * las instancias coincidan. En Fase 2, con Postgres, el dato es uno solo y
+   * este campo desaparece.
+   */
+  id?: string
+  /**
+   * Igual que `id`, y por la misma razón: solo la semilla lo fija. Un envío
+   * real se sella con la hora en que llegó.
+   *
+   * El listado ordena por este campo. Si cada instancia sembrara con su propio
+   * instante, la misma lista saldría en distinto orden según a quién le tocara
+   * responder.
+   */
+  submittedAt?: string
   /** Solo lo pone la semilla de Fase 1; un envío real siempre es false. */
   isDemo?: boolean
   /** Solo la semilla la trae de nacimiento; un envío real la elige después. */
@@ -39,9 +60,9 @@ function nextCaseNumber(): string {
 }
 
 export async function createLead(input: CreateLeadInput): Promise<Lead> {
-  const stamp = nowIso()
+  const stamp = input.submittedAt ?? nowIso()
   const lead: Lead = {
-    id: newId('lead'),
+    id: input.id ?? newId('lead'),
     // El folio es un recurso escaso y visible: solo lo consume quien califica.
     caseNumber: input.qualificationStatus === 'qualified' ? nextCaseNumber() : null,
     fullName: input.fullName,
@@ -125,7 +146,14 @@ export async function listQualifiedLeads(options: ListQualifiedOptions = {}): Pr
   const sort = options.sort ?? 'submittedAt'
   const direction = options.direction ?? 'desc'
   const factor = direction === 'asc' ? 1 : -1
-  const rows = cloneAll(filtered).sort((a, b) => factor * compareBy(a, b, sort))
+  // El desempate por id no es cosmético: sin él, dos solicitudes con el mismo
+  // `submittedAt` —la semilla las crea en el mismo milisegundo— quedan en
+  // orden indefinido, y cada instancia pinta la lista en un orden distinto.
+  // El desempate va SIN `factor`: invertir la dirección no debe reordenar
+  // los empates, solo el criterio principal.
+  const rows = cloneAll(filtered).sort(
+    (a, b) => factor * compareBy(a, b, sort) || a.id.localeCompare(b.id),
+  )
 
   const pageSize = Math.min(100, Math.max(5, options.pageSize ?? 25))
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
