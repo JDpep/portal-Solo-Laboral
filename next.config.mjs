@@ -2,6 +2,20 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  /*
+   * La puerta del despacho se escribe /acceso, en singular. Quien la teclea en
+   * plural (o con los nombres que uno espera de un login) llegaba a un 404 sin
+   * pista de a dónde ir. Estas redirecciones son permanentes porque la ruta
+   * buena no va a cambiar.
+   */
+  async redirects() {
+    return [
+      { source: '/accesos', destination: '/acceso', permanent: true },
+      { source: '/login', destination: '/acceso', permanent: true },
+      { source: '/acceder', destination: '/acceso', permanent: true },
+      { source: '/entrar', destination: '/acceso', permanent: true },
+    ]
+  },
   async headers() {
     return [
       {
