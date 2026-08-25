@@ -20,7 +20,7 @@ import { readLeadClaim, setLeadClaim } from '@/lib/auth/lead-claim'
 import { LEAD_POLICY, checkRate, registerHit } from '@/lib/auth/rate-limit'
 import { today } from '@/lib/dates'
 import { qualifyLead } from '@/lib/domain/qualification'
-import { parseCallPreference } from '@/lib/domain/call-slot'
+import { parseCallPreference } from '@/lib/domain/call-time'
 import { EMPTY_LEAD_VALUES, parseLeadForm, readLeadValues } from '@/lib/domain/lead-form'
 import { HONEYPOT_FIELD, toUnqualifiedReason } from '@/lib/domain/lead-submission'
 import type { LeadSubmissionState, ScheduleCallState } from '@/lib/domain/lead-submission'
@@ -152,7 +152,7 @@ export async function scheduleCallAction(
   }
   registerHit(rateKey)
 
-  const parsed = parseCallPreference(formData.get('callDate'), formData.get('callSlot'), today())
+  const parsed = parseCallPreference(formData.get('callDate'), formData.get('callTime'), today())
   if (!parsed.ok) return { status: 'error', message: parsed.message }
 
   // El repositorio vuelve a exigir que el caso esté calificado; si la cookie

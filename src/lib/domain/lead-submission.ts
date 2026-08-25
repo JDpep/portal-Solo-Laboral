@@ -6,7 +6,7 @@
  * cliente necesite tiene que declararse en un módulo aparte.
  */
 import type { LeadFieldErrors, LeadFormValues } from '@/lib/domain/lead-form'
-import type { CallPreference } from '@/lib/domain/call-slot'
+import type { CallPreference } from '@/lib/domain/call-time'
 import type { QualificationReason } from '@/lib/domain/qualification'
 
 /**

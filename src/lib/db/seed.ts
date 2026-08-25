@@ -11,8 +11,8 @@
 import { getStore } from '@/lib/db/store'
 import { hashPassword } from '@/lib/auth/password'
 import { addDays, nowIso, today } from '@/lib/dates'
-import { callDayOptions } from '@/lib/domain/call-slot'
-import type { CallSlot } from '@/lib/domain/call-slot'
+import { callDayOptions } from '@/lib/domain/call-time'
+import type { CallTime } from '@/lib/domain/call-time'
 import { qualifyLead } from '@/lib/domain/qualification'
 import type { StateCode } from '@/lib/domain/states'
 import type { StaffUser } from '@/lib/domain/types'
@@ -34,7 +34,7 @@ interface DemoSubmission {
   daysAgo: number
   description: string
   /** Índice del día ofrecido + franja, para sembrar una llamada pedida. */
-  callIn?: { dayIndex: number; slot: CallSlot }
+  callIn?: { dayIndex: number; time: CallTime }
 }
 
 /**
@@ -59,7 +59,7 @@ const DEMO_SUBMISSIONS: DemoSubmission[] = [
       'Me despidieron de una tienda en Ecatepec después de avisar que estaba embarazada. Me ofrecieron dos semanas de sueldo para que firmara mi renuncia y no firmé.',
     // Uno de los ejemplos trae franja pedida: si ninguno la tuviera, la
     // demostración no enseñaría el caso que justifica la función.
-    callIn: { dayIndex: 0, slot: 'afternoon' },
+    callIn: { dayIndex: 0, time: '16:20' },
   },
   {
     fullName: 'Ricardo Ontiveros Lara',
@@ -142,7 +142,7 @@ export async function seedIfEmpty(): Promise<void> {
       dismissalDaysAtSubmission: verdict.dismissalDaysAgo,
       callPreference:
         demo.callIn && verdict.status === 'qualified'
-          ? { date: callDayOptions(submittedOn)[demo.callIn.dayIndex], slot: demo.callIn.slot }
+          ? { date: callDayOptions(submittedOn)[demo.callIn.dayIndex], time: demo.callIn.time }
           : null,
       isDemo: true,
     })

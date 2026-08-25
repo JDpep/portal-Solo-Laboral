@@ -1,8 +1,8 @@
 import clsx from 'clsx'
 import { PhoneCall } from 'lucide-react'
 import { formatDateChip } from '@/lib/dates'
-import { CALL_SLOT_SHORT } from '@/lib/domain/call-slot'
-import type { CallPreference } from '@/lib/domain/call-slot'
+import { formatCallTime } from '@/lib/domain/call-time'
+import type { CallPreference } from '@/lib/domain/call-time'
 
 const base =
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap'
@@ -57,7 +57,7 @@ export function DaysBadge({ days, compact = false }: { days: number; compact?: b
  * marca ahora. Una séptima columna lo habría escondido en el scroll horizontal
  * justo en el aparato desde el que se llama.
  */
-export function CallSlotBadge({
+export function CallTimeBadge({
   preference,
   className,
 }: {
@@ -67,7 +67,7 @@ export function CallSlotBadge({
   return (
     <Badge tone="info" className={clsx('gap-1', className)}>
       <PhoneCall className="h-3 w-3 shrink-0" aria-hidden />
-      Pidió {formatDateChip(preference.date)} · {CALL_SLOT_SHORT[preference.slot]}
+      Pidió {formatDateChip(preference.date)} · {formatCallTime(preference.time)}
     </Badge>
   )
 }

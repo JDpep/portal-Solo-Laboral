@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * Agendar la llamada, con su autorización real.
  *
  * El doble de `next/headers` lleva un tarro de galletas DE VERDAD: lo que se
- * prueba aquí no es el formato de la fecha (eso está en call-slot.test.ts) sino
+ * prueba aquí no es el formato de la fecha (eso está en call-time.test.ts) sino
  * que el permiso para agendar viaje en una cookie firmada y que sin ella no se
  * pueda tocar ninguna solicitud.
  */
@@ -28,7 +28,7 @@ const { resetStore } = await import('@/lib/db/store')
 const { listQualifiedLeads } = await import('@/lib/db/leads')
 const { resetRateLimits } = await import('@/lib/auth/rate-limit')
 const { addDays, today } = await import('@/lib/dates')
-const { callDayOptions } = await import('@/lib/domain/call-slot')
+const { callDayOptions } = await import('@/lib/domain/call-time')
 
 const IDLE = { status: 'idle' } as const
 const SCHEDULE_IDLE = { status: 'idle' } as const
@@ -61,10 +61,10 @@ function leadForm(overrides: Record<string, string> = {}): FormData {
   return data
 }
 
-function scheduleForm(date: string, slot: string): FormData {
+function scheduleForm(date: string, time: string): FormData {
   const data = new FormData()
   data.set('callDate', date)
-  data.set('callSlot', slot)
+  data.set('callTime', time)
   return data
 }
 
@@ -76,25 +76,25 @@ beforeEach(() => {
 })
 
 describe('agendar la llamada', () => {
-  it('un caso calificado puede elegir franja y queda guardada', async () => {
+  it('un caso calificado puede elegir hora exacta y queda guardada', async () => {
     const submitted = await submitLeadAction(IDLE, leadForm())
     expect(submitted.status).toBe('qualified')
 
     const dia = callDayOptions(today())[1]
-    const state = await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(dia, 'afternoon'))
+    const state = await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(dia, '16:20'))
     expect(state.status).toBe('scheduled')
     if (state.status !== 'scheduled') return
-    expect(state.preference).toEqual({ date: dia, slot: 'afternoon' })
+    expect(state.preference).toEqual({ date: dia, time: '16:20' })
 
     // Y el abogado la ve en el portal.
     const caso = await casoDePrueba()
-    expect(caso.callPreference).toEqual({ date: dia, slot: 'afternoon' })
+    expect(caso.callPreference).toEqual({ date: dia, time: '16:20' })
     expect(caso.callPreferenceSetAt).toBeTruthy()
   })
 
   it('sin haber enviado nada no se puede agendar', async () => {
     const dia = callDayOptions(today())[0]
-    const state = await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(dia, 'morning'))
+    const state = await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(dia, '10:00'))
     expect(state.status).toBe('error')
     if (state.status !== 'error') return
     // El mensaje NO puede sugerir que la solicitud se perdió.
@@ -109,7 +109,7 @@ describe('agendar la llamada', () => {
     expect(submitted.status).toBe('unqualified')
 
     const dia = callDayOptions(today())[0]
-    const state = await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(dia, 'morning'))
+    const state = await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(dia, '10:00'))
     expect(state.status).toBe('error')
   })
 
@@ -118,30 +118,30 @@ describe('agendar la llamada', () => {
     const original = jar.get('sl_lead') as string
     const [payload, firma] = original.split('.')
     // Se cambia la carga útil dejando la firma vieja.
-    const otro = Buffer.from(JSON.stringify({ leadId: 'lead_otro', issuedAt: Date.now() })).toString(
-      'base64url',
-    )
+    const otro = Buffer.from(
+      JSON.stringify({ leadId: 'lead_otro', issuedAt: Date.now() }),
+    ).toString('base64url')
     jar.set('sl_lead', `${otro}.${firma}`)
 
     const dia = callDayOptions(today())[0]
-    const state = await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(dia, 'morning'))
+    const state = await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(dia, '10:00'))
     expect(state.status).toBe('error')
     expect(payload).not.toBe(otro)
   })
 
-  it('elegir de nuevo sustituye la franja anterior', async () => {
+  it('elegir de nuevo sustituye la hora anterior', async () => {
     await submitLeadAction(IDLE, leadForm())
     const [primero, segundo] = callDayOptions(today())
 
-    await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(primero, 'morning'))
-    await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(segundo, 'afternoon'))
+    await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(primero, '10:00'))
+    await scheduleCallAction(SCHEDULE_IDLE, scheduleForm(segundo, '16:20'))
 
-    expect((await casoDePrueba()).callPreference).toEqual({ date: segundo, slot: 'afternoon' })
+    expect((await casoDePrueba()).callPreference).toEqual({ date: segundo, time: '16:20' })
   })
 
   it('un día fuera de los ofrecidos se rechaza aunque haya permiso', async () => {
     await submitLeadAction(IDLE, leadForm())
-    const state = await scheduleCallAction(SCHEDULE_IDLE, scheduleForm('2027-12-15', 'morning'))
+    const state = await scheduleCallAction(SCHEDULE_IDLE, scheduleForm('2027-12-15', '10:00'))
     expect(state.status).toBe('error')
 
     expect((await casoDePrueba()).callPreference).toBeNull()

@@ -12,7 +12,7 @@ import { nowIso } from '@/lib/dates'
 import type { PlainDate } from '@/lib/dates'
 import type { Lead } from '@/lib/domain/types'
 import type { QualificationReason, QualificationStatus } from '@/lib/domain/qualification'
-import type { CallPreference } from '@/lib/domain/call-slot'
+import type { CallPreference } from '@/lib/domain/call-time'
 import type { StateCode } from '@/lib/domain/states'
 
 export interface CreateLeadInput {

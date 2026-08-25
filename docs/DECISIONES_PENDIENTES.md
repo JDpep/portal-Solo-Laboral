@@ -141,11 +141,16 @@ El esquema ya prevé cómo entraría (tabla `lead_contacts` append-only, ver
 
 ---
 
-### 11. Agendar la llamada: es una franja, no una cita
+### 11. Agendar la llamada: hora exacta, pero sigue siendo una preferencia
 
-**Decisión tomada (2026-08-24):** tras calificar, la persona puede elegir uno
-de los próximos cinco días y mañana / tarde. Se guarda en el caso y el abogado
-la ve en la lista y en el detalle.
+**Decisión tomada (2026-08-24), REVISADA el 2026-08-25:** tras calificar, la
+persona elige uno de los próximos cinco días y una **hora exacta**, de 9:30 a
+17:30 en pasos de diez minutos. Se guarda en el caso y el abogado la ve en la
+lista y en el detalle.
+
+La versión original pedía solo una franja (mañana / tarde). El despacho pidió
+hora exacta: una franja de cinco horas obliga a quien espera la llamada a estar
+pendiente toda la mañana, que era justo el problema que esto venía a resolver.
 
 **Se ofrecen los cinco días corridos, sábado y domingo incluidos.** Quien acaba
 de perder su trabajo suele estar disponible justo el fin de semana, y esto no
@@ -154,12 +159,18 @@ de marcar. Si el despacho no atiende sábados, el costo de que alguien lo pida
 es una llamada el lunes — bastante menor que el de esconder los dos días en que
 más gente puede contestar el teléfono.
 
-**Se eligió franja y no hora exacta a propósito.** Para ofrecer "miércoles a las
-11:30" haría falta la disponibilidad real de los abogados, y no existe: no hay
-calendario del despacho, ni quién atiende cada franja, ni forma de bloquear un
-hueco. Una hora exacta sin nada detrás es una cita que nadie va a cumplir, y el
-producto entero está construido sobre no prometer de más. El texto se lo dice a
-la persona con todas sus letras.
+**Sigue sin ser una reserva, y el texto lo dice.** Detrás de la hora elegida no
+hay nada: el sistema no conoce la disponibilidad de los abogados, no sabe quién
+atiende, y no bloquea el hueco. Dos personas pueden pedir las 10:00 del mismo
+día y ninguna de las dos se entera. Por eso el copy dice "haremos lo posible por
+marcarte en ella" y en ningún momento "tienes una cita".
+
+**Este es el riesgo vivo de esta decisión.** Una hora exacta se lee como un
+compromiso aunque el texto diga otra cosa: quien pide las 10:00 va a sentirse
+incumplido a las 10:15 de una forma en que no se sentía cuando había pedido "por
+la mañana". El producto entero está construido sobre no prometer de más, así que
+esto conviene vigilarlo con las primeras llamadas reales. Si duele, hay dos
+salidas: agenda de verdad (punto 3 de la lista de abajo) o volver a franjas.
 
 **El paso es opcional** y también se dice: el abogado llama igual. Quien no
 quiera pensar en horarios en ese momento se lo salta sin perder nada.
@@ -170,9 +181,13 @@ otra persona adivinando identificadores.
 
 **Lo que hay que preguntarle al despacho:**
 
-1. **El horario de atención.** Hoy se ofrece 9:00–14:00 y 14:00–19:00, que es
-   un supuesto, y el mismo para todos los días. Se cambia en `CALL_SLOT_RANGE`
-   (`src/lib/domain/call-slot.ts`).
+1. **El horario de atención.** Hoy se ofrece 9:30–17:30, el mismo para todos los
+   días, incluido el fin de semana. Se cambia en `CALL_TIME_FIRST_MINUTE`,
+   `CALL_TIME_LAST_MINUTE` y `CALL_TIME_STEP_MINUTES`
+   (`src/lib/domain/call-time.ts`), que es de donde salen a la vez las opciones
+   que se pintan y las que el servidor acepta.
+   **Falta saber si el sábado y el domingo tienen el mismo horario**, porque hoy
+   se ofrece el horario completo también esos días.
 2. **Qué pasa con lo que se pide en fin de semana o en festivo.** No se excluye
    ningún día: hoy se puede pedir domingo, o el 16 de septiembre. Si el despacho
    quiere excluir alguno, se filtra en `callDayOptions` — misma función que
@@ -181,8 +196,9 @@ otra persona adivinando identificadores.
    es otra pieza, no un ajuste de esta: implica saber quién atiende y cuándo.
 
 **Sigue pendiente el punto 3 de este documento**: nadie se entera al instante
-de que entró un caso, tenga franja pedida o no. Que alguien pida "mañana a las
-9:00" no sirve si nadie abre el portal antes.
+de que entró un caso, tenga hora pedida o no. Que alguien pida "mañana a las
+9:30" no sirve si nadie abre el portal antes — y con hora exacta este pendiente
+pesa más que antes, no menos.
 
 ---
 

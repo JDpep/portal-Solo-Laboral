@@ -13,7 +13,7 @@ import { RefreshButton, RefreshDim } from '@/components/portal/Refresh'
 import { Pagination } from '@/components/ui/Pagination'
 import { TBody, TD, THead, TR } from '@/components/ui/Table'
 import { DemoNotice, EmptyState } from '@/components/ui/States'
-import { CallSlotBadge, DaysBadge, DemoBadge } from '@/components/ui/Badge'
+import { CallTimeBadge, DaysBadge, DemoBadge } from '@/components/ui/Badge'
 
 export const dynamic = 'force-dynamic'
 
@@ -131,7 +131,7 @@ export default async function PortalPage({
                       </p>
                       {lead.callPreference ? (
                         <p className="mt-1.5">
-                          <CallSlotBadge preference={lead.callPreference} />
+                          <CallTimeBadge preference={lead.callPreference} />
                         </p>
                       ) : null}
                       <p className="mt-1.5 text-sm text-sl-muted">
@@ -239,7 +239,7 @@ export default async function PortalPage({
                           {lead.isDemo ? <DemoBadge className="ml-2" /> : null}
                           {lead.callPreference ? (
                             <span className="mt-1 block font-normal">
-                              <CallSlotBadge preference={lead.callPreference} />
+                              <CallTimeBadge preference={lead.callPreference} />
                             </span>
                           ) : null}
                         </TD>

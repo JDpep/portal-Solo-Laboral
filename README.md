@@ -27,10 +27,11 @@ fecha de despido— y uno **opcional**: la descripción de lo que pasó. El moto
 no la usa; sirve para que el abogado llegue con contexto a la llamada.
 
 Quien califica puede, además, elegir **cuándo quiere que le llamen**: uno de
-los próximos cinco días —fin de semana incluido— y mañana o tarde. Es una **franja solicitada, no
-una cita**: el despacho no publica disponibilidad, así que comprometer una hora
-exacta sería prometer algo que nadie firmó. La franja aparece junto al nombre
-en el portal. Detalle en [`docs/DECISIONES_PENDIENTES.md`](docs/DECISIONES_PENDIENTES.md), punto 11.
+los próximos cinco días —fin de semana incluido— y una **hora exacta** entre las
+9:30 y las 17:30, de diez en diez minutos. Es una **preferencia, no una
+reserva**: el sistema no conoce la agenda de los abogados y no bloquea el hueco,
+así que el texto promete "haremos lo posible" y nunca una cita. La hora aparece
+junto al nombre en el portal. Detalle en [`docs/DECISIONES_PENDIENTES.md`](docs/DECISIONES_PENDIENTES.md), punto 11.
 
 ---
 

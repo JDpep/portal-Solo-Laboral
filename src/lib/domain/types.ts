@@ -2,7 +2,7 @@
 import type { PlainDate } from '@/lib/dates'
 import type { StateCode } from '@/lib/domain/states'
 import type { QualificationReason, QualificationStatus } from '@/lib/domain/qualification'
-import type { CallPreference } from '@/lib/domain/call-slot'
+import type { CallPreference } from '@/lib/domain/call-time'
 
 export type Id = string
 

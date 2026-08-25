@@ -6,7 +6,7 @@ import { findQualifiedLeadById } from '@/lib/db/leads'
 import { formatDate, formatDateLong, formatDateTime } from '@/lib/dates'
 import { formatPhone, telHref, whatsappHref } from '@/lib/domain/phone'
 import { stateLabel } from '@/lib/domain/states'
-import { CALL_SLOT_LABEL, CALL_SLOT_RANGE } from '@/lib/domain/call-slot'
+import { formatCallTime } from '@/lib/domain/call-time'
 import { DaysBadge, DemoBadge } from '@/components/ui/Badge'
 import { DemoNotice } from '@/components/ui/States'
 
@@ -113,8 +113,7 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                 <strong className="font-semibold">
                   {formatDateLong(lead.callPreference.date)}
                 </strong>
-                , {CALL_SLOT_LABEL[lead.callPreference.slot].toLowerCase()} (
-                {CALL_SLOT_RANGE[lead.callPreference.slot]}).
+                a las {formatCallTime(lead.callPreference.time)}.
               </p>
               <p className="mt-1 text-xs text-sl-muted">
                 Es la franja que eligió, no una cita comprometida a una hora exacta.
