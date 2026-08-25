@@ -108,7 +108,7 @@ export async function submitLeadAction(
   })
 
   if (lead.qualificationStatus === 'qualified' && lead.caseNumber) {
-    // 7. Permiso temporal para elegir franja de llamada. Solo los calificados:
+    // 7. Permiso temporal para elegir hora de llamada. Solo los calificados:
     //    a quien no pasó el filtro no se le ofrece la pantalla ni la cookie.
     setLeadClaim(lead.id)
     return { status: 'qualified', caseNumber: lead.caseNumber }

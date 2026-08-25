@@ -75,7 +75,7 @@ export async function createLead(input: CreateLeadInput): Promise<Lead> {
     qualificationStatus: input.qualificationStatus,
     qualificationReason: input.qualificationReason,
     dismissalDaysAtSubmission: input.dismissalDaysAtSubmission,
-    // La franja se elige en la pantalla siguiente, nunca en el envío.
+    // La hora se elige en la pantalla siguiente, nunca en el envío.
     callPreference: input.callPreference ?? null,
     callPreferenceSetAt: input.callPreference ? stamp : null,
     isDemo: input.isDemo ?? false,
@@ -184,7 +184,7 @@ function compareBy(a: Lead, b: Lead, key: LeadSortKey): number {
 }
 
 /**
- * Guarda (o sustituye) la franja pedida para la llamada.
+ * Guarda (o sustituye) la hora pedida para la llamada.
  *
  * SOLO sobre un lead calificado. La comprobación vive aquí y no en la acción
  * por la misma razón que el filtro del portal: quien entre después por otra

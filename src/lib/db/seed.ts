@@ -33,7 +33,7 @@ interface DemoSubmission {
   state: StateCode
   daysAgo: number
   description: string
-  /** Índice del día ofrecido + franja, para sembrar una llamada pedida. */
+  /** Índice del día ofrecido + hora, para sembrar una llamada pedida. */
   callIn?: { dayIndex: number; time: CallTime }
 }
 
@@ -57,7 +57,7 @@ const DEMO_SUBMISSIONS: DemoSubmission[] = [
     daysAgo: 6,
     description:
       'Me despidieron de una tienda en Ecatepec después de avisar que estaba embarazada. Me ofrecieron dos semanas de sueldo para que firmara mi renuncia y no firmé.',
-    // Uno de los ejemplos trae franja pedida: si ninguno la tuviera, la
+    // Uno de los ejemplos trae hora pedida: si ninguno la tuviera, la
     // demostración no enseñaría el caso que justifica la función.
     callIn: { dayIndex: 0, time: '16:20' },
   },

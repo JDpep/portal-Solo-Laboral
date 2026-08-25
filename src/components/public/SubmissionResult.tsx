@@ -62,7 +62,7 @@ export function SubmissionResult({
         </dl>
 
         {/*
-          Elegir franja SOLO se ofrece aquí, en la rama que calificó. En la
+          Elegir hora SOLO se ofrece aquí, en la rama que calificó. En la
           otra sería cruel: proponerle horario a alguien a quien se le acaba de
           decir que no se puede atender su caso.
         */}

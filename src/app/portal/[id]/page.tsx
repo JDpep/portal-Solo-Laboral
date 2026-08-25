@@ -96,10 +96,10 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
         </div>
 
         {/*
-          La franja pedida va ARRIBA del relato y pegada a los botones de
+          La hora pedida va ARRIBA del relato y pegada a los botones de
           contacto, porque no informa: condiciona la acción. Enterarse de que
-          la persona pidió que le llamaran por la tarde después de haberle
-          marcado por la mañana no sirve de nada.
+          la persona pidió las cinco de la tarde después de haberle marcado a
+          las diez de la mañana no sirve de nada.
         */}
         {lead.callPreference ? (
           <div className="flex items-start gap-2.5 border-b border-sl-border bg-sl-secondary/5 px-5 py-4 sm:px-7">
@@ -112,11 +112,16 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                 Pidió que le llamaran el{' '}
                 <strong className="font-semibold">
                   {formatDateLong(lead.callPreference.date)}
+                </strong>{' '}
+                a las{' '}
+                <strong className="font-semibold">
+                  {formatCallTime(lead.callPreference.time)}
                 </strong>
-                a las {formatCallTime(lead.callPreference.time)}.
+                .
               </p>
               <p className="mt-1 text-xs text-sl-muted">
-                Es la franja que eligió, no una cita comprometida a una hora exacta.
+                Es la hora que pidió. No hay agenda detrás: nadie más la tiene bloqueada y nadie
+                confirmó que se pueda.
               </p>
             </div>
           </div>

@@ -2,7 +2,7 @@
  * PERMISO TEMPORAL PARA AGENDAR.
  *
  * Quien acaba de enviar el formulario no tiene cuenta ni sesión, pero tiene
- * que poder elegir su franja de llamada. El problema es de autorización: hay
+ * que poder elegir su hora de llamada. El problema es de autorización: hay
  * que dejarlo tocar SU solicitud y ninguna otra.
  *
  * La solución es una cookie httpOnly firmada con el id del caso. Nunca viaja
