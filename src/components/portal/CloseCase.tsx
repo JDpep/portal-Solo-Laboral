@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useFormState } from 'react-dom'
 import { useFormStatus } from 'react-dom'
-import { CircleAlert } from 'lucide-react'
+import { CircleAlert, UserMinus } from 'lucide-react'
 import { closeCaseAction } from '@/app/portal/seguimiento/actions'
 import type { CloseCaseState } from '@/app/portal/seguimiento/actions'
 import { FormError } from '@/components/ui/Form'
@@ -37,9 +37,27 @@ export function CloseCase({ caseId }: { caseId: string }) {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="sl-btn-secondary">
-        Finalizar seguimiento
-      </button>
+      <div className="flex flex-wrap gap-2">
+        {/* "El cliente desistió" tiene botón propio porque es, de largo, el
+            final más frecuente de un caso que no llega a término, y hacerlo
+            pasar por el selector de motivos convertía lo habitual en lo
+            engorroso. Es el mismo cierre y el mismo motivo: solo se ahorra el
+            paso de elegirlo. */}
+        <button
+          type="button"
+          onClick={() => {
+            setReason('client_declined')
+            setOpen(true)
+          }}
+          className="sl-btn-secondary"
+        >
+          <UserMinus className="h-4 w-4" aria-hidden />
+          El cliente desistió
+        </button>
+        <button type="button" onClick={() => setOpen(true)} className="sl-btn-secondary">
+          Finalizar seguimiento
+        </button>
+      </div>
     )
   }
 
@@ -48,7 +66,11 @@ export function CloseCase({ caseId }: { caseId: string }) {
       <input type="hidden" name="caseId" value={caseId} />
 
       <div>
-        <h3 className="text-sm font-semibold text-sl-text">¿Por qué se termina el seguimiento?</h3>
+        <h3 className="text-sm font-semibold text-sl-text">
+          {reason === 'client_declined'
+            ? 'El cliente desistió. ¿Confirmas?'
+            : '¿Por qué se termina el seguimiento?'}
+        </h3>
         <p className="mt-0.5 text-xs text-sl-muted">
           El caso no se borra: conserva su ruta y su historia, y pasa al histórico.
         </p>
@@ -91,7 +113,18 @@ export function CloseCase({ caseId }: { caseId: string }) {
           <label htmlFor="note" className="sl-label">
             Nota <span className="font-normal text-sl-muted">(opcional)</span>
           </label>
-          <textarea id="note" name="note" rows={2} maxLength={2000} className="sl-input" />
+          <textarea
+            id="note"
+            name="note"
+            rows={2}
+            maxLength={2000}
+            className="sl-input"
+            placeholder={
+              reason === 'client_declined'
+                ? '¿Dijo por qué? Es lo que se lee en el histórico dentro de seis meses.'
+                : undefined
+            }
+          />
         </div>
       )}
 

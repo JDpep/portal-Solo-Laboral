@@ -82,7 +82,11 @@ export async function convertLeadAction(
 ): Promise<ConvertState> {
   const user = await requireStaff()
   const leadId = String(formData.get('leadId') ?? '')
-  const assignedTo = String(formData.get('assignedTo') ?? '') || null
+  // Sin responsable elegido, el caso queda a nombre de quien lo convirtió. Un
+  // caso "sin asignar" no es de nadie: no sale en la carga de trabajo de ningún
+  // abogado y solo se descubre cuando alguien lo busca por casualidad. Quien
+  // decidió tomar el asunto es el candidato obvio, y cambiarlo es un desplegable.
+  const assignedTo = String(formData.get('assignedTo') ?? '') || user.id
 
   const result = await convertLeadToCase(leadId, user.id, assignedTo)
   if (!result.ok) {

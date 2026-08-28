@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { crearAbogado, resetDb } from './helpers'
+import { db } from '@/lib/db/sql'
 import { createLead } from '@/lib/db/leads'
-import { closeCase, convertLeadToCase } from '@/lib/db/cases'
+import { closeCase, convertLeadToCase, listStatusHistory, setCaseStatus } from '@/lib/db/cases'
 import { listChecklist, setChecklistItemStatus, updateChecklistItem } from '@/lib/db/checklist'
 import {
   cancelEvent,
@@ -390,5 +391,98 @@ describe('actividades capturadas a mano', () => {
     const delCaso = await listEventsForCase(caseId)
     expect(delCaso).toHaveLength(1)
     expect(delCaso[0].title).toBe('Entrega de documentos')
+  })
+})
+
+describe('el estado del caso sigue a la agenda', () => {
+  beforeEach(resetDb)
+
+  async function estado(caseId: string) {
+    const [row] = await db()`SELECT status FROM cases WHERE id = ${caseId}::uuid`
+    return row.status as string
+  }
+
+  it('agendar algo por delante lo pasa a "evento agendado"', async () => {
+    const { caseId, items, abogada } = await crearCasoConRuta()
+    expect(await estado(caseId)).toBe('active')
+
+    await updateChecklistItem(
+      items[5].id,
+      { dueAt: instantFrom(addDays(today(), 5), '10:00'), eventType: 'hearing' },
+      abogada.id,
+    )
+    // Es un HECHO comprobable, no un juicio: o hay cita por delante o no la hay.
+    expect(await estado(caseId)).toBe('scheduled')
+  })
+
+  it('quedarse sin eventos lo devuelve a activo', async () => {
+    const { caseId, items, abogada } = await crearCasoConRuta()
+    await updateChecklistItem(
+      items[5].id,
+      { dueAt: instantFrom(addDays(today(), 5), '10:00') },
+      abogada.id,
+    )
+    expect(await estado(caseId)).toBe('scheduled')
+
+    await updateChecklistItem(items[5].id, { dueAt: null }, abogada.id)
+    expect(await estado(caseId)).toBe('active')
+  })
+
+  it('NO pisa "esperando cliente" ni "en proceso"', async () => {
+    const { caseId, items, abogada } = await crearCasoConRuta()
+    await setCaseStatus(caseId, 'waiting_client', abogada.id)
+
+    await updateChecklistItem(
+      items[5].id,
+      { dueAt: instantFrom(addDays(today(), 5), '10:00') },
+      abogada.id,
+    )
+
+    // "Estoy esperando a que me manden el contrato" no se deduce de ninguna
+    // tabla. Automatizar el juicio de otro hace que deje de usarse el campo.
+    expect(await estado(caseId)).toBe('waiting_client')
+  })
+
+  it('una actividad capturada a mano también lo mueve', async () => {
+    const { caseId, abogada } = await crearCasoConRuta()
+    await createEvent(
+      {
+        title: 'Junta con el cliente',
+        eventType: 'meeting',
+        startAt: instantFrom(addDays(today(), 2), '11:00'),
+        caseId,
+      },
+      abogada.id,
+    )
+    expect(await estado(caseId)).toBe('scheduled')
+  })
+
+  it('un evento que ya pasó no cuenta como evento por delante', async () => {
+    const { caseId, abogada } = await crearCasoConRuta()
+    await createEvent(
+      {
+        title: 'Llamada de ayer',
+        eventType: 'call',
+        startAt: instantFrom(addDays(today(), -1), '11:00'),
+        caseId,
+      },
+      abogada.id,
+    )
+    expect(await estado(caseId)).toBe('active')
+  })
+
+  it('deja constancia en el historial de los dos movimientos', async () => {
+    const { caseId, items, abogada } = await crearCasoConRuta()
+    await updateChecklistItem(
+      items[5].id,
+      { dueAt: instantFrom(addDays(today(), 5), '10:00') },
+      abogada.id,
+    )
+    await updateChecklistItem(items[5].id, { dueAt: null }, abogada.id)
+
+    const historial = await listStatusHistory(caseId)
+    const razones = historial.map((h) => h.reason)
+    expect(razones).toContain('Tiene un evento por delante')
+    expect(razones).toContain('Se quedó sin eventos por delante')
   })
 })
