@@ -1,42 +1,59 @@
 import Link from 'next/link'
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
+import clsx from 'clsx'
+import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { requireStaff } from '@/lib/auth/guard'
 import { listAgenda, listOverdue } from '@/lib/db/events'
+import { listCases } from '@/lib/db/cases'
+import { listActiveUsers } from '@/lib/db/users'
 import {
   addDays,
+  addMonths,
   formatDateLong,
   formatMonthLong,
+  formatTime,
   instantFrom,
   isPlainDate,
   nowIso,
   plainDateOf,
+  startOfMonth,
   startOfWeek,
   today,
 } from '@/lib/dates'
+import { EVENT_TYPE_LABEL } from '@/lib/domain/labels'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { RefreshButton, RefreshDim } from '@/components/portal/Refresh'
-import { EmptyState } from '@/components/ui/States'
 import { AgendaEventRow } from '@/components/portal/AgendaEventRow'
-import type { AgendaEvent } from '@/lib/domain/types'
+import { NuevaActividad } from '@/components/portal/NuevaActividad'
+import type { AgendaEvent, EventType } from '@/lib/domain/types'
 
 export const dynamic = 'force-dynamic'
 
+const WEEKDAYS = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom']
+
+/** Un punto de color por tipo, para leer la rejilla sin abrir cada día. */
+const DOT: Record<EventType, string> = {
+  call: 'bg-sl-secondary-strong',
+  hearing: 'bg-sl-warning',
+  conciliation: 'bg-sl-warning',
+  meeting: 'bg-sl-primary',
+  follow_up: 'bg-sl-muted',
+  deadline: 'bg-sl-danger',
+  other: 'bg-sl-muted',
+}
+
 /**
- * AGENDA DEL DESPACHO.
+ * CALENDARIO MENSUAL.
  *
- * Nadie captura un evento aquí, y no es una carencia: es la decisión. Lo que se
- * ve en esta pantalla se alimenta solo de dos sitios que ya existen —lo que el
- * prospecto pide desde la web, y la fecha que un abogado le pone a un paso de
- * la ruta del caso—. Un alta de eventos propia habría creado una tercera
- * versión de los mismos hechos, y la tercera versión es siempre la que nadie
- * actualiza.
+ * El mes de un vistazo arriba, el día elegido completo abajo. La rejilla
+ * responde "¿cómo viene el mes?" y el panel responde "¿qué hay ese día?"; una
+ * sola de las dos no basta —en una celda de calendario no cabe de quién es la
+ * cita ni su teléfono, y una lista suelta no deja ver que la semana que viene
+ * está cargada.
  *
- * Por eso el vacío no dice "añade un evento": dice dónde se ponen las fechas.
- *
- * SEMANA y no mes. La pregunta que se hace un abogado al abrir esto es "¿qué
- * tengo que hacer?", y una cuadrícula mensual la responde con recuadros de
- * cinco milímetros donde no cabe de quién es cada cosa. La semana deja escribir
- * el nombre del cliente y el teléfono en el renglón.
+ * TRES VÍAS llenan esta agenda y no se cierran igual: la llamada que pide el
+ * prospecto desde la web y la fecha de un paso de la ruta del caso se escriben
+ * solas y se cierran donde nacieron; la actividad capturada aquí sí se marca
+ * realizada o se cancela en esta pantalla.
  */
 export default async function CalendarioPage({
   searchParams,
@@ -46,34 +63,56 @@ export default async function CalendarioPage({
   await requireStaff()
 
   const hoy = today()
-  const raw = Array.isArray(searchParams.semana) ? searchParams.semana[0] : searchParams.semana
-  const anchor = raw && isPlainDate(raw) ? raw : hoy
-  const inicio = startOfWeek(anchor)
-  const fin = addDays(inicio, 7)
-
-  const [eventos, atrasados] = await Promise.all([
-    listAgenda({ from: instantFrom(inicio, '00:00'), to: instantFrom(fin, '00:00') }),
-    // Los atrasados solo estorban cuando se está mirando otra semana: quien
-    // navega al futuro está planeando, no recogiendo lo que quedó suelto.
-    startOfWeek(hoy) === inicio ? listOverdue(nowIso()) : Promise.resolve([] as AgendaEvent[]),
-  ])
-
-  const dias = Array.from({ length: 7 }, (_, i) => addDays(inicio, i))
-  const porDia = new Map<string, AgendaEvent[]>()
-  for (const evento of eventos) {
-    const dia = plainDateOf(evento.startAt)
-    const lista = porDia.get(dia)
-    if (lista) lista.push(evento)
-    else porDia.set(dia, [evento])
+  const pick = (key: string) => {
+    const raw = searchParams[key]
+    const value = Array.isArray(raw) ? raw[0] : raw
+    return value && isPlainDate(value) ? value : undefined
   }
 
-  const esSemanaActual = startOfWeek(hoy) === inicio
+  const diaElegido = pick('dia')
+  const mesAncla = pick('mes') ?? diaElegido ?? hoy
+  const primero = startOfMonth(mesAncla)
+  const siguiente = addMonths(primero, 1)
+
+  // La rejilla empieza el lunes de la semana del día 1 y termina el domingo de
+  // la semana del último día: los huecos de los meses vecinos se pintan en gris
+  // en vez de dejar celdas vacías que rompen la lectura de la cuadrícula.
+  const desde = startOfWeek(primero)
+  const hasta = addDays(startOfWeek(addDays(siguiente, -1)), 7)
+
+  const [eventos, atrasados, casos, usuarios] = await Promise.all([
+    listAgenda({ from: instantFrom(desde, '00:00'), to: instantFrom(hasta, '00:00') }),
+    startOfMonth(hoy) === primero ? listOverdue(nowIso()) : Promise.resolve([] as AgendaEvent[]),
+    listCases({ scope: 'open', pageSize: 100 }),
+    listActiveUsers(),
+  ])
+
+  const porDia = new Map<string, AgendaEvent[]>()
+  for (const evento of eventos) {
+    const clave = plainDateOf(evento.startAt)
+    const lista = porDia.get(clave)
+    if (lista) lista.push(evento)
+    else porDia.set(clave, [evento])
+  }
+
+  // El día del panel: el elegido, o hoy si el mes en pantalla es el de hoy, o
+  // el día 1. Nunca queda sin panel: un calendario que no muestra nada abajo
+  // parece roto.
+  const dia = diaElegido ?? (startOfMonth(hoy) === primero ? hoy : primero)
+  const delDia = porDia.get(dia) ?? []
+
+  const celdas: string[] = []
+  for (let cursor = desde; cursor < hasta; cursor = addDays(cursor, 1)) celdas.push(cursor)
+
+  const enElMes = eventos.filter((evento) =>
+    plainDateOf(evento.startAt).startsWith(primero.slice(0, 7)),
+  )
 
   return (
     <>
       <PageHeader
         title="Calendario"
-        description="La semana del despacho. Se llena sola: llamadas pedidas desde la web y fechas puestas en la ruta de cada caso."
+        description="Todo lo agendado del despacho. Se llena solo con lo que piden los prospectos y con las fechas de la ruta, y puedes añadir actividades a mano."
         actions={<RefreshButton />}
       />
 
@@ -81,41 +120,50 @@ export default async function CalendarioPage({
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
           <Link
-            href={`/portal/calendario?semana=${addDays(inicio, -7)}`}
+            href={`/portal/calendario?mes=${addMonths(primero, -1)}`}
             className="sl-btn-secondary px-2.5"
-            aria-label="Semana anterior"
+            aria-label="Mes anterior"
           >
             <ChevronLeft className="h-4 w-4" aria-hidden />
           </Link>
           <Link
-            href={`/portal/calendario?semana=${addDays(inicio, 7)}`}
+            href={`/portal/calendario?mes=${addMonths(primero, 1)}`}
             className="sl-btn-secondary px-2.5"
-            aria-label="Semana siguiente"
+            aria-label="Mes siguiente"
           >
             <ChevronRight className="h-4 w-4" aria-hidden />
           </Link>
         </div>
 
-        {esSemanaActual ? null : (
+        <h2 className="text-lg font-semibold capitalize text-sl-text">
+          {formatMonthLong(primero)}
+        </h2>
+        <span className="text-sm text-sl-muted">
+          {enElMes.length === 1 ? '1 actividad' : `${enElMes.length} actividades`}
+        </span>
+
+        {startOfMonth(hoy) === primero ? null : (
           <Link href="/portal/calendario" className="sl-btn-secondary">
-            Volver a esta semana
+            Ir a hoy
           </Link>
         )}
 
-        <p className="text-sm text-sl-muted">
-          <span className="font-medium text-sl-text">
-            {formatDateLong(inicio)} — {formatDateLong(addDays(inicio, 6))}
-          </span>
-          <span className="hidden sm:inline"> · {formatMonthLong(inicio)}</span>
-          {' · '}
-          {eventos.length === 1 ? '1 evento' : `${eventos.length} eventos`}
-        </p>
+        <div className="ml-auto">
+          <NuevaActividad
+            defaultDay={dia}
+            users={usuarios}
+            cases={casos.rows.map((row) => ({
+              id: row.id,
+              label: `${row.folio} · ${row.clientName}`,
+            }))}
+          />
+        </div>
       </div>
 
       <RefreshDim>
         {/* ─────────────────────────── atrasados ──────────────────────────── */}
         {atrasados.length > 0 ? (
-          <section className="sl-card sl-in mb-5 overflow-hidden border-sl-warning/40">
+          <section className="sl-card sl-in mb-4 overflow-hidden border-sl-warning/40">
             <div className="flex items-center gap-2 border-b border-sl-border bg-sl-warning/10 px-5 py-3">
               <AlertTriangle className="h-4 w-4 shrink-0 text-sl-warning" aria-hidden />
               <h2 className="text-sm font-semibold text-sl-text">
@@ -131,78 +179,140 @@ export default async function CalendarioPage({
           </section>
         ) : null}
 
-        {/* ──────────────────────────── la semana ─────────────────────────── */}
-        {eventos.length === 0 ? (
-          <div className="sl-card">
-            <EmptyState
-              title="Nada agendado esta semana"
-              description="La agenda no se captura: se llena sola. Una llamada aparece cuando el prospecto la pide desde la web; una audiencia aparece cuando le pones fecha a su paso en la ruta del caso."
-              action={
-                <Link href="/portal/seguimiento" className="sl-btn-secondary">
-                  Ir a Seguimiento
-                </Link>
-              }
-            />
+        {/* ──────────────────────────── la rejilla ─────────────────────────── */}
+        <div className="sl-card sl-in overflow-hidden">
+          <div className="grid grid-cols-7 border-b border-sl-border bg-sl-background">
+            {WEEKDAYS.map((nombre) => (
+              <div
+                key={nombre}
+                className="px-1 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-sl-muted"
+              >
+                {nombre}
+              </div>
+            ))}
           </div>
-        ) : (
-          <div className="space-y-3">
-            {dias.map((dia, i) => {
-              const delDia = porDia.get(dia) ?? []
-              const esHoy = dia === hoy
+
+          <div className="grid grid-cols-7">
+            {celdas.map((fecha) => {
+              const delMes = fecha.slice(0, 7) === primero.slice(0, 7)
+              const esHoy = fecha === hoy
+              const activo = fecha === dia
+              const lista = porDia.get(fecha) ?? []
+
               return (
-                <section
-                  key={dia}
-                  className="sl-card sl-in overflow-hidden"
-                  style={{ animationDelay: `${Math.min(i, 7) * 35}ms` }}
+                <Link
+                  key={fecha}
+                  href={`/portal/calendario?mes=${primero}&dia=${fecha}`}
+                  aria-current={activo ? 'date' : undefined}
+                  aria-label={`${formatDateLong(fecha)}, ${lista.length} ${
+                    lista.length === 1 ? 'actividad' : 'actividades'
+                  }`}
+                  className={clsx(
+                    'flex min-h-[4.5rem] flex-col gap-1 border-b border-r border-sl-border p-1.5 transition-colors sm:min-h-[6rem]',
+                    delMes ? 'bg-sl-surface' : 'bg-sl-background',
+                    activo ? 'ring-2 ring-inset ring-sl-primary' : 'hover:bg-sl-primary-soft/50',
+                  )}
                 >
-                  <div
-                    className={
-                      esHoy
-                        ? 'flex items-center gap-2 border-b border-sl-border bg-sl-primary-soft px-5 py-2.5'
-                        : 'flex items-center gap-2 border-b border-sl-border px-5 py-2.5'
-                    }
+                  <span
+                    className={clsx(
+                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs tabular-nums',
+                      esHoy && 'bg-sl-primary font-semibold text-white',
+                      !esHoy && delMes && 'text-sl-text',
+                      !esHoy && !delMes && 'text-sl-muted',
+                    )}
                   >
-                    <CalendarDays
-                      className={esHoy ? 'h-4 w-4 text-sl-primary' : 'h-4 w-4 text-sl-muted'}
-                      aria-hidden
-                    />
-                    <h2
-                      className={
-                        esHoy
-                          ? 'text-sm font-semibold capitalize text-sl-primary'
-                          : 'text-sm font-semibold capitalize text-sl-text'
-                      }
-                    >
-                      {formatDateLong(dia)}
-                    </h2>
-                    {esHoy ? (
-                      <span className="rounded-full bg-sl-primary px-2 py-0.5 text-xs font-medium text-white">
-                        Hoy
+                    {Number(fecha.slice(8, 10))}
+                  </span>
+
+                  {/* En el móvil no cabe el título: se pintan puntos por tipo.
+                      En escritorio, la hora y de quién es. */}
+                  <span className="flex flex-wrap gap-0.5 sm:hidden">
+                    {lista.slice(0, 4).map((evento) => (
+                      <span
+                        key={evento.id}
+                        className={clsx('h-1.5 w-1.5 rounded-full', DOT[evento.eventType])}
+                        aria-hidden
+                      />
+                    ))}
+                  </span>
+
+                  <span className="hidden min-w-0 flex-col gap-0.5 sm:flex">
+                    {lista.slice(0, 3).map((evento) => (
+                      <span
+                        key={evento.id}
+                        className={clsx(
+                          'flex min-w-0 items-center gap-1 rounded-[4px] px-1 py-0.5 text-[10px] leading-tight',
+                          evento.status === 'done'
+                            ? 'text-sl-muted line-through'
+                            : 'bg-sl-primary-soft/70 text-sl-text',
+                        )}
+                      >
+                        <span
+                          className={clsx(
+                            'h-1.5 w-1.5 shrink-0 rounded-full',
+                            DOT[evento.eventType],
+                          )}
+                          aria-hidden
+                        />
+                        <span className="shrink-0 tabular-nums">{formatTime(evento.startAt)}</span>
+                        <span className="truncate">{evento.clientName ?? evento.title}</span>
+                      </span>
+                    ))}
+                    {lista.length > 3 ? (
+                      <span className="px-1 text-[10px] text-sl-muted">
+                        +{lista.length - 3} más
                       </span>
                     ) : null}
-                    <span className="ml-auto text-xs text-sl-muted">
-                      {delDia.length === 0
-                        ? '—'
-                        : delDia.length === 1
-                          ? '1 evento'
-                          : `${delDia.length} eventos`}
-                    </span>
-                  </div>
-
-                  {delDia.length === 0 ? (
-                    <p className="px-5 py-3 text-sm text-sl-muted">Sin nada agendado.</p>
-                  ) : (
-                    <ul className="divide-y divide-sl-border">
-                      {delDia.map((evento) => (
-                        <AgendaEventRow key={evento.id} event={evento} />
-                      ))}
-                    </ul>
-                  )}
-                </section>
+                  </span>
+                </Link>
               )
             })}
           </div>
-        )}
+        </div>
+
+        {/* ─────────────────────────── el día elegido ──────────────────────── */}
+        <section className="sl-card mt-4 overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sl-border px-5 py-3">
+            <h2 className="text-sm font-semibold capitalize text-sl-text">
+              {formatDateLong(dia)}
+              {dia === hoy ? (
+                <span className="ml-2 rounded-full bg-sl-primary px-2 py-0.5 text-xs font-medium normal-case text-white">
+                  Hoy
+                </span>
+              ) : null}
+            </h2>
+            <span className="text-xs text-sl-muted">
+              {delDia.length === 0
+                ? 'Sin nada agendado'
+                : delDia.length === 1
+                  ? '1 actividad'
+                  : `${delDia.length} actividades`}
+            </span>
+          </div>
+
+          {delDia.length === 0 ? (
+            <p className="px-5 py-6 text-sm text-sl-muted">
+              Nada este día. Usa <strong className="font-semibold">Nueva actividad</strong> para
+              agendar algo, o ponle fecha a un paso de la ruta de un caso y aparecerá aquí solo.
+            </p>
+          ) : (
+            <ul className="divide-y divide-sl-border">
+              {delDia.map((evento) => (
+                <AgendaEventRow key={evento.id} event={evento} />
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Qué significa cada color. Sin esto los puntos son adivinanzas. */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-sl-muted">
+          {(['meeting', 'call', 'hearing', 'deadline', 'follow_up'] as EventType[]).map((type) => (
+            <span key={type} className="flex items-center gap-1.5">
+              <span className={clsx('h-2 w-2 rounded-full', DOT[type])} aria-hidden />
+              {EVENT_TYPE_LABEL[type]}
+            </span>
+          ))}
+        </div>
       </RefreshDim>
     </>
   )

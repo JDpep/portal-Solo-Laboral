@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import clsx from 'clsx'
-import { Check, ListChecks, Phone, RotateCcw } from 'lucide-react'
-import { setEventDoneAction } from '@/app/portal/seguimiento/actions'
+import { Check, ListChecks, Phone, RotateCcw, X } from 'lucide-react'
+import { cancelEventAction, setEventDoneAction } from '@/app/portal/calendario/actions'
 import { EVENT_TYPE_LABEL, EVENT_TYPE_TONE } from '@/lib/domain/labels'
 import { formatTime } from '@/lib/dates'
 import { formatPhone, telHref } from '@/lib/domain/phone'
@@ -18,6 +18,8 @@ import type { AgendaEvent } from '@/lib/domain/types'
  * Los eventos que nacen de un paso de la ruta no se cierran desde aquí: llevan
  * un enlace a su caso. Cerrar el mismo hecho por dos puertas distintas es la
  * forma más rápida de que la agenda y la ruta acaben contando cosas distintas.
+ * Las actividades capturadas a mano sí se cierran y se cancelan aquí: no
+ * reflejan nada que viva en otro sitio.
  */
 export function AgendaEventRow({ event, overdue = false }: { event: AgendaEvent; overdue?: boolean }) {
   const done = event.status === 'done'
@@ -91,26 +93,42 @@ export function AgendaEventRow({ event, overdue = false }: { event: AgendaEvent;
             Ver en la ruta
           </Link>
         ) : (
-          <form action={setEventDoneAction}>
-            <input type="hidden" name="eventId" value={event.id} />
-            <input type="hidden" name="done" value={done ? 'no' : 'si'} />
-            <button
-              type="submit"
-              className="inline-flex items-center gap-1.5 rounded-full border border-sl-border px-3 py-1 text-xs font-medium text-sl-text transition-colors hover:bg-sl-primary-soft"
-            >
-              {done ? (
-                <>
-                  <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-                  Reabrir
-                </>
-              ) : (
-                <>
-                  <Check className="h-3.5 w-3.5" aria-hidden />
-                  Realizado
-                </>
-              )}
-            </button>
-          </form>
+          <>
+            <form action={setEventDoneAction}>
+              <input type="hidden" name="eventId" value={event.id} />
+              <input type="hidden" name="done" value={done ? 'no' : 'si'} />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 rounded-full border border-sl-border px-3 py-1 text-xs font-medium text-sl-text transition-colors hover:bg-sl-primary-soft"
+              >
+                {done ? (
+                  <>
+                    <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                    Reabrir
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-3.5 w-3.5" aria-hidden />
+                    Realizado
+                  </>
+                )}
+              </button>
+            </form>
+            {/* Cancelar no borra: la agenda es también el registro de lo que
+                se había previsto y no ocurrió. */}
+            {event.source === 'manual' && !done ? (
+              <form action={cancelEventAction}>
+                <input type="hidden" name="eventId" value={event.id} />
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-sl-border px-3 py-1 text-xs font-medium text-sl-muted transition-colors hover:bg-sl-danger/10 hover:text-sl-danger"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden />
+                  Cancelar
+                </button>
+              </form>
+            ) : null}
+          </>
         )}
       </div>
     </li>

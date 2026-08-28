@@ -82,6 +82,27 @@ export function startOfWeek(value: PlainDate): PlainDate {
   return addDays(value, weekday === 0 ? -6 : 1 - weekday)
 }
 
+/** El día 1 del mes al que pertenece la fecha. */
+export function startOfMonth(value: PlainDate): PlainDate {
+  return `${value.slice(0, 7)}-01`
+}
+
+/**
+ * Suma (o resta) meses civiles.
+ *
+ * Recorta el día al último del mes destino: el 31 de enero más un mes es el 28
+ * de febrero, no el 3 de marzo. Sin ese recorte, pulsar "mes siguiente" tres
+ * veces desde el 31 de enero se saltaría marzo entero.
+ */
+export function addMonths(value: PlainDate, delta: number): PlainDate {
+  const [year, month, day] = value.split('-').map(Number)
+  const total = year * 12 + (month - 1) + delta
+  const nextYear = Math.floor(total / 12)
+  const nextMonth = (total % 12) + 1
+  const nextDay = Math.min(day, daysInMonth(nextYear, nextMonth))
+  return `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`
+}
+
 /** "agosto de 2026" — para el encabezado de un rango. */
 export function formatMonthLong(value: PlainDate): string {
   return new Intl.DateTimeFormat('es-MX', {

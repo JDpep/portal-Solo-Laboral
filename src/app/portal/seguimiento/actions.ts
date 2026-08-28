@@ -15,7 +15,6 @@ import { redirect } from 'next/navigation'
 import { requireStaff } from '@/lib/auth/guard'
 import { convertLeadToCase, assignCase, closeCase, reopenCase, setCaseStatus } from '@/lib/db/cases'
 import { addChecklistItem, setChecklistItemStatus, updateChecklistItem } from '@/lib/db/checklist'
-import { setEventDone } from '@/lib/db/events'
 import { setLeadStatus } from '@/lib/db/leads'
 import { instantFrom, isPlainDate } from '@/lib/dates'
 import type {
@@ -183,22 +182,6 @@ export async function updateStepAction(formData: FormData): Promise<void> {
   revalidatePath('/portal/calendario')
 }
 
-/**
- * Marcar realizado —o reabrir— un evento de la agenda.
- *
- * Solo alcanza a los que NO nacieron de un paso de la ruta; el repositorio lo
- * impone en la propia consulta. Los que sí nacieron ahí se cierran completando
- * su paso, y dejar que se cerraran por las dos puertas permitiría que la agenda
- * dijera "hecho" mientras la ruta del caso dice "pendiente".
- */
-export async function setEventDoneAction(formData: FormData): Promise<void> {
-  await requireStaff()
-  const eventId = String(formData.get('eventId') ?? '')
-  const done = String(formData.get('done') ?? '') === 'si'
-
-  await setEventDone(eventId, done)
-  revalidatePath('/portal/calendario')
-}
 
 export async function addStepAction(formData: FormData): Promise<void> {
   const user = await requireStaff()

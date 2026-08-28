@@ -3,7 +3,15 @@ import { crearAbogado, resetDb } from './helpers'
 import { createLead } from '@/lib/db/leads'
 import { closeCase, convertLeadToCase } from '@/lib/db/cases'
 import { listChecklist, setChecklistItemStatus, updateChecklistItem } from '@/lib/db/checklist'
-import { listAgenda, listEventsForCase, listOverdue, setEventDone, upsertWebCallEvent } from '@/lib/db/events'
+import {
+  cancelEvent,
+  createEvent,
+  listAgenda,
+  listEventsForCase,
+  listOverdue,
+  setEventDone,
+  upsertWebCallEvent,
+} from '@/lib/db/events'
 import { qualifyLead } from '@/lib/domain/qualification'
 import { addDays, instantFrom, today } from '@/lib/dates'
 
@@ -14,10 +22,11 @@ import { addDays, instantFrom, today } from '@/lib/dates'
  * esa es exactamente la razón de probarlo contra Postgres de verdad: contra un
  * doble en memoria estas pruebas pasarían sin haber ejercitado nada.
  *
- * La regla de fondo: no existe un alta de eventos. Un evento aparece porque el
- * prospecto pidió una llamada desde la web, o porque alguien le puso fecha a un
- * paso de la ruta. Si hubiera una tercera puerta, habría una tercera versión de
- * los mismos hechos.
+ * Tres vías llenan la agenda y la diferencia importa: la llamada que pide el
+ * prospecto desde la web y la fecha de un paso de la ruta son un REFLEJO de algo
+ * que vive en otro sitio, así que no se cierran ni se cancelan desde la agenda;
+ * la actividad capturada a mano no refleja nada y sí. Media suite se dedica a
+ * comprobar que esa frontera aguanta.
  */
 async function crearCasoConRuta() {
   const hoy = today()
@@ -258,5 +267,128 @@ describe('la agenda', () => {
     // Esta sí se cierra desde la agenda: no hay ningún paso que la respalde.
     expect(await setEventDone(agenda[0].id, true)).not.toBeNull()
     expect((await listAgenda(rangoAmplio()))[0].status).toBe('done')
+  })
+})
+
+describe('actividades capturadas a mano', () => {
+  beforeEach(resetDb)
+
+  it('se guardan ligadas a un caso y heredan su cliente y su folio', async () => {
+    const { caseId, abogada, lead } = await crearCasoConRuta()
+
+    await createEvent(
+      {
+        title: 'Junta con el cliente',
+        eventType: 'meeting',
+        startAt: instantFrom(addDays(today(), 2), '11:00'),
+        caseId,
+        description: 'En el despacho.',
+      },
+      abogada.id,
+    )
+
+    const agenda = await listAgenda(rangoAmplio())
+    expect(agenda).toHaveLength(1)
+    expect(agenda[0].eventType).toBe('meeting')
+    expect(agenda[0].source).toBe('manual')
+    // Ligarla al caso es lo que le da nombre y folio en la agenda.
+    expect(agenda[0].clientName).toBe(lead.fullName)
+    expect(agenda[0].folio).toBe(lead.folio)
+    // No nació de un paso, así que se puede cerrar desde la agenda.
+    expect(agenda[0].checklistItemId).toBeNull()
+  })
+
+  it('sin caso, la actividad queda a nombre de quien la crea', async () => {
+    const { abogada } = await crearCasoConRuta()
+
+    const creado = await createEvent(
+      {
+        title: 'Junta interna del despacho',
+        eventType: 'meeting',
+        startAt: instantFrom(addDays(today(), 1), '09:00'),
+      },
+      abogada.id,
+    )
+
+    // La base exige que todo evento tenga dueño: una cita que no es de nadie
+    // no le sirve a nadie y no vuelve a encontrarse.
+    expect(creado!.assignedUserId).toBe(abogada.id)
+    expect(creado!.caseId).toBeNull()
+
+    const agenda = await listAgenda(rangoAmplio())
+    expect(agenda[0].clientName).toBeNull()
+    expect(agenda[0].assignedUserName).toBe(abogada.name)
+  })
+
+  it('respeta al responsable elegido cuando se indica', async () => {
+    const { abogada } = await crearCasoConRuta()
+    const otra = await crearAbogado('Otra abogada')
+
+    const creado = await createEvent(
+      {
+        title: 'Diligencia',
+        eventType: 'other',
+        startAt: instantFrom(addDays(today(), 1), '09:00'),
+        assignedUserId: otra.id,
+      },
+      abogada.id,
+    )
+    expect(creado!.assignedUserId).toBe(otra.id)
+    expect(creado!.createdBy).toBe(abogada.id)
+  })
+
+  it('se marca realizada y se cancela desde la agenda', async () => {
+    const { caseId, abogada } = await crearCasoConRuta()
+    await createEvent(
+      {
+        title: 'Llamada de cortesía',
+        eventType: 'call',
+        startAt: instantFrom(addDays(today(), 1), '13:00'),
+        caseId,
+      },
+      abogada.id,
+    )
+    const [evento] = await listAgenda(rangoAmplio())
+
+    expect(await setEventDone(evento.id, true)).not.toBeNull()
+    expect((await listAgenda(rangoAmplio()))[0].status).toBe('done')
+
+    await setEventDone(evento.id, false)
+    expect(await cancelEvent(evento.id)).not.toBeNull()
+    // Cancelada sale de la agenda pero no se borra: sigue siendo el registro
+    // de lo que se había previsto y no ocurrió.
+    expect(await listAgenda(rangoAmplio())).toHaveLength(0)
+    expect((await listEventsForCase(caseId))[0].status).toBe('cancelled')
+  })
+
+  it('cancelar NO alcanza a un evento nacido de un paso de la ruta', async () => {
+    const { caseId, items, abogada } = await crearCasoConRuta()
+    await updateChecklistItem(
+      items[5].id,
+      { dueAt: instantFrom(addDays(today(), 3), '10:30'), eventType: 'hearing' },
+      abogada.id,
+    )
+    const [evento] = await listEventsForCase(caseId)
+
+    // Se quita borrándole la fecha al paso, no desde la agenda: si se pudiera
+    // por las dos puertas, la ruta seguiría diciendo que hay audiencia.
+    expect(await cancelEvent(evento.id)).toBeNull()
+    expect((await listEventsForCase(caseId))[0].status).toBe('scheduled')
+  })
+
+  it('una actividad ligada aparece en la agenda del caso', async () => {
+    const { caseId, abogada } = await crearCasoConRuta()
+    await createEvent(
+      {
+        title: 'Entrega de documentos',
+        eventType: 'other',
+        startAt: instantFrom(addDays(today(), 4), '17:00'),
+        caseId,
+      },
+      abogada.id,
+    )
+    const delCaso = await listEventsForCase(caseId)
+    expect(delCaso).toHaveLength(1)
+    expect(delCaso[0].title).toBe('Entrega de documentos')
   })
 })

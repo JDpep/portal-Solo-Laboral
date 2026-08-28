@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, compareDates, daysBetween, formatDate, formatMonthLong, formatSubmittedAt, formatTime, instantFrom, isPlainDate, plainDateOf, startOfWeek, today } from '@/lib/dates'
+import { addDays, addMonths, compareDates, daysBetween, formatDate, formatMonthLong, formatSubmittedAt, formatTime, instantFrom, isPlainDate, plainDateOf, startOfMonth, startOfWeek, today } from '@/lib/dates'
 
 describe('fechas civiles', () => {
   it('valida fechas civiles', () => {
@@ -105,5 +105,50 @@ describe('semana del despacho', () => {
   it('nombra el mes en español', () => {
     expect(formatMonthLong('2026-08-24')).toBe('agosto de 2026')
     expect(formatMonthLong('2026-01-01')).toBe('enero de 2026')
+  })
+})
+
+/** La rejilla del calendario se mueve de mes en mes; aquí está su aritmética. */
+describe('meses del calendario', () => {
+  it('encuentra el día 1 del mes', () => {
+    expect(startOfMonth('2026-08-28')).toBe('2026-08-01')
+    expect(startOfMonth('2026-08-01')).toBe('2026-08-01')
+  })
+
+  it('avanza y retrocede meses cruzando el año', () => {
+    expect(addMonths('2026-08-01', 1)).toBe('2026-09-01')
+    expect(addMonths('2026-12-01', 1)).toBe('2027-01-01')
+    expect(addMonths('2026-01-01', -1)).toBe('2025-12-01')
+    expect(addMonths('2026-08-01', -14)).toBe('2025-06-01')
+  })
+
+  it('recorta el día al último del mes destino', () => {
+    // Sin el recorte, el 31 de enero más un mes daría el 3 de marzo y pulsar
+    // "mes siguiente" desde ahí se saltaría febrero entero.
+    expect(addMonths('2026-01-31', 1)).toBe('2026-02-28')
+    expect(addMonths('2024-01-31', 1)).toBe('2024-02-29') // bisiesto
+    expect(addMonths('2026-03-31', -1)).toBe('2026-02-28')
+  })
+
+  it('doce saltos de un mes dan la vuelta al año', () => {
+    let fecha = '2026-08-01'
+    for (let i = 0; i < 12; i += 1) fecha = addMonths(fecha, 1)
+    expect(fecha).toBe('2027-08-01')
+  })
+
+  it('la rejilla de un mes son semanas completas de lunes a domingo', () => {
+    // Es como la arma la pantalla: del lunes de la semana del día 1 al domingo
+    // de la semana del último día. Siempre múltiplo de 7, sin celdas huérfanas.
+    for (const mes of ['2026-02-01', '2026-08-01', '2027-01-01', '2024-02-01']) {
+      const desde = startOfWeek(mes)
+      const ultimo = addDays(addMonths(mes, 1), -1)
+      const hasta = addDays(startOfWeek(ultimo), 7)
+      const celdas = daysBetween(desde, hasta)
+      expect(celdas % 7).toBe(0)
+      expect(celdas).toBeGreaterThanOrEqual(28)
+      // Y el mes entero cabe dentro de la rejilla.
+      expect(desde <= mes).toBe(true)
+      expect(hasta > ultimo).toBe(true)
+    }
   })
 })

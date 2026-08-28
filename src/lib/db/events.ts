@@ -4,15 +4,20 @@
  * La agenda operativa del despacho: llamadas, audiencias, conciliaciones y
  * juntas.
  *
- * NADIE CAPTURA EVENTOS A MANO, y es deliberado. La agenda es un REFLEJO de dos
- * cosas que ya existen en otro sitio:
+ * La agenda se llena por TRES vías, y conviene saber cuál es cuál porque no se
+ * cierran igual:
  *
- *   · lo que pide el prospecto desde la web  -> `upsertWebCallEvent`, aquí
+ *   · lo que pide el prospecto desde la web   -> `upsertWebCallEvent`
  *   · la fecha de un paso de la ruta del caso -> un trigger de la base
+ *   · una actividad capturada a mano          -> `createEvent`
  *
- * Un alta manual aparte convertiría la agenda en una tercera versión de los
- * mismos hechos, y la tercera versión es siempre la que se queda desactualizada.
- * Para agendar una audiencia se le pone fecha a su paso en la ruta del caso.
+ * Las dos primeras son un REFLEJO de algo que ya existe en otro sitio, y por eso
+ * no se pueden cerrar desde la agenda: se cierran donde nacieron. La tercera no
+ * refleja nada, así que se marca realizada o se cancela aquí mismo.
+ *
+ * El riesgo del alta manual es capturar dos veces la misma audiencia —una en la
+ * ruta del caso y otra aquí— y acabar con dos que no coinciden. No lo impide
+ * nada; lo único que hace la pantalla es decir de dónde viene cada evento.
  *
  * IDEMPOTENCIA: la llamada pedida desde la web es UNA por lead, y lo garantiza
  * un índice único parcial de la base. Si la persona cambia de opinión —elige
@@ -219,6 +224,70 @@ export async function setEventDone(
   const rows = await db()`
     UPDATE calendar_events
        SET status = ${done ? 'done' : 'scheduled'}::event_status
+     WHERE id = ${eventId}::uuid
+       AND checklist_item_id IS NULL
+       AND status <> 'cancelled'
+    RETURNING *
+  `
+  return rows.length ? rowToEvent(rows[0]) : null
+}
+
+// ──────────────────────────────────────────────────── alta manual de agenda
+
+export interface CreateEventInput {
+  title: string
+  eventType: EventType
+  /** Instante real (ISO UTC) ya resuelto en la zona del despacho. */
+  startAt: string
+  endAt?: string | null
+  caseId?: string | null
+  description?: string
+  assignedUserId?: string | null
+}
+
+/**
+ * Una actividad capturada a mano.
+ *
+ * `assigned_user_id` cae en quien la crea cuando no se elige responsable ni
+ * caso, y no es un detalle: la base exige que todo evento tenga dueño —lead,
+ * caso o responsable—, porque una cita que no es de nadie no le sirve a nadie y
+ * nunca vuelve a encontrarse.
+ */
+export async function createEvent(
+  input: CreateEventInput,
+  createdBy: string,
+): Promise<CalendarEvent | null> {
+  const caseId = input.caseId && isUuid(input.caseId) ? input.caseId : null
+  const assigned =
+    input.assignedUserId && isUuid(input.assignedUserId) ? input.assignedUserId : createdBy
+
+  const rows = await db()`
+    INSERT INTO calendar_events (
+      case_id, event_type, title, description, start_at, end_at,
+      assigned_user_id, status, source, created_by
+    ) VALUES (
+      ${caseId}::uuid, ${input.eventType}::event_type, ${input.title},
+      ${input.description ?? ''}, ${input.startAt}::timestamptz,
+      ${input.endAt ?? null}::timestamptz, ${assigned}::uuid,
+      'scheduled', 'manual', ${createdBy}::uuid
+    )
+    RETURNING *
+  `
+  return rows.length ? rowToEvent(rows[0]) : null
+}
+
+/**
+ * Cancelar una actividad. No la borra: la agenda de un despacho es también el
+ * registro de lo que se había previsto y no ocurrió.
+ *
+ * Igual que `setEventDone`, no alcanza a los eventos que nacieron de un paso de
+ * la ruta: esos se quitan borrándole la fecha al paso.
+ */
+export async function cancelEvent(eventId: string): Promise<CalendarEvent | null> {
+  if (!isUuid(eventId)) return null
+  const rows = await db()`
+    UPDATE calendar_events
+       SET status = 'cancelled', cancelled_at = now()
      WHERE id = ${eventId}::uuid
        AND checklist_item_id IS NULL
        AND status <> 'cancelled'
