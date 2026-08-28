@@ -24,8 +24,8 @@ vi.mock('next/headers', () => ({
 }))
 
 const { submitLeadAction, scheduleCallAction } = await import('@/app/solicitud/actions')
-const { resetStore } = await import('@/lib/db/store')
-const { listQualifiedLeads } = await import('@/lib/db/leads')
+const { resetDb } = await import('./helpers')
+const { listLeads } = await import('@/lib/db/leads')
 const { resetRateLimits } = await import('@/lib/auth/rate-limit')
 const { addDays, today } = await import('@/lib/dates')
 const { callDayOptions } = await import('@/lib/domain/call-time')
@@ -33,17 +33,11 @@ const { callDayOptions } = await import('@/lib/domain/call-time')
 const IDLE = { status: 'idle' } as const
 const SCHEDULE_IDLE = { status: 'idle' } as const
 
-/**
- * El caso de la prueba, buscado por nombre y NO por `rows[0]`.
- *
- * La semilla siembra un demo que ya trae franja pedida, y todos los registros
- * nacen en el mismo milisegundo: ordenar por fecha de envío deja el primer
- * lugar al azar. Atarse a la posición hacía que estas pruebas afirmaran cosas
- * sobre el registro equivocado. El nombre además NO puede repetir ninguno de
- * la semilla, o la búsqueda devuelve dos.
- */
+/** El caso de la prueba, buscado por nombre y NO por `rows[0]`: atarse a la
+ *  posición hace que la prueba afirme cosas sobre el registro equivocado en
+ *  cuanto entra un segundo envío. */
 async function casoDePrueba() {
-  const page = await listQualifiedLeads({ query: 'Ana Ruiz Delgado' })
+  const page = await listLeads({ query: 'Ana Ruiz Delgado' })
   return page.rows[0]
 }
 
@@ -68,9 +62,9 @@ function scheduleForm(date: string, time: string): FormData {
   return data
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   jar.clear()
-  resetStore()
+  await resetDb()
   resetRateLimits()
   ip = '187.190.0.1'
 })
@@ -119,7 +113,7 @@ describe('agendar la llamada', () => {
     const [payload, firma] = original.split('.')
     // Se cambia la carga útil dejando la firma vieja.
     const otro = Buffer.from(
-      JSON.stringify({ leadId: 'lead_otro', issuedAt: Date.now() }),
+      JSON.stringify({ leadId: '00000000-0000-4000-8000-000000000000', issuedAt: Date.now() }),
     ).toString('base64url')
     jar.set('sl_lead', `${otro}.${firma}`)
 

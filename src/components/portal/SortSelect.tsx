@@ -23,7 +23,7 @@ const OPTIONS = [
   { value: 'dismissalDate:asc', label: 'Despido más antiguo' },
   { value: 'dismissalDate:desc', label: 'Despido más reciente' },
   { value: 'fullName:asc', label: 'Nombre (A–Z)' },
-  { value: 'caseNumber:desc', label: 'Folio (mayor a menor)' },
+  { value: 'folio:desc', label: 'Folio (mayor a menor)' },
 ] as const
 
 export function SortSelect({ sort, direction }: { sort: string; direction: 'asc' | 'desc' }) {

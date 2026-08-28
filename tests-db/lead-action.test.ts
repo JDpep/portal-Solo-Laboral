@@ -18,9 +18,8 @@ vi.mock('next/headers', () => ({
 
 const { submitLeadAction } = await import('@/app/solicitud/actions')
 const { HONEYPOT_FIELD } = await import('@/lib/domain/lead-submission')
-const { resetStore } = await import('@/lib/db/store')
-const { ensureSeeded } = await import('@/lib/db')
-const { countLeadsByStatus, listQualifiedLeads } = await import('@/lib/db/leads')
+const { resetDb } = await import('./helpers')
+const { countLeadsByStatus, listLeads } = await import('@/lib/db/leads')
 const { LEAD_POLICY } = await import('@/lib/auth/rate-limit')
 const { resetRateLimits } = await import('@/lib/auth/rate-limit')
 const { addDays, today } = await import('@/lib/dates')
@@ -42,12 +41,9 @@ function form(overrides: Record<string, string> = {}): FormData {
 const IDLE = { status: 'idle' } as const
 
 beforeEach(async () => {
-  resetStore()
+  await resetDb()
   resetRateLimits()
   ip = '187.190.0.1'
-  // La acción siembra al arrancar; se hace aquí para que los conteos previos
-  // de cada caso ya incluyan la semilla y midan solo lo que el caso agrega.
-  await ensureSeeded()
 })
 
 describe('recepción del formulario público', () => {
@@ -55,21 +51,19 @@ describe('recepción del formulario público', () => {
     const state = await submitLeadAction(IDLE, form())
     expect(state.status).toBe('qualified')
     if (state.status !== 'qualified') return
-    expect(state.caseNumber).toMatch(/^SL-\d{6}$/)
+    expect(state.folio).toMatch(/^SL-\d{6}$/)
 
-    // La semilla trae tres calificados de demostración; este es el cuarto.
-    const page = await listQualifiedLeads()
-    expect(page.rows[0].caseNumber).toBe(state.caseNumber)
+    const page = await listLeads()
+    expect(page.rows[0].folio).toBe(state.folio)
     // Un envío real nunca queda marcado como dato sembrado.
     expect(page.rows[0].isDemo).toBe(false)
-    expect(page.rows.filter((l) => l.isDemo)).toHaveLength(3)
   })
 
   it('un envío no calificado responde sin folio y no llega al portal', async () => {
-    const antes = (await listQualifiedLeads()).total
+    const antes = (await listLeads()).total
     const state = await submitLeadAction(IDLE, form({ state: 'CAM', phone: '9811457023' }))
     expect(state.status).toBe('unqualified')
-    expect((await listQualifiedLeads()).total).toBe(antes)
+    expect((await listLeads()).total).toBe(antes)
   })
 
   /**
@@ -138,7 +132,7 @@ describe('recepción del formulario público', () => {
     const segundo = await submitLeadAction(IDLE, form())
     expect(segundo).toEqual(primero)
 
-    const folios = (await listQualifiedLeads()).rows.map((l) => l.caseNumber)
+    const folios = (await listLeads()).rows.map((l: { folio: string | null }) => l.folio)
     expect(new Set(folios).size).toBe(folios.length)
   })
 

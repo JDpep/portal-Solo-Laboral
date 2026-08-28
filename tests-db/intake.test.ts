@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { resetStore } from '@/lib/db/store'
+import { resetDb } from './helpers'
 import {
   countLeadsByStatus,
   createLead,
-  findQualifiedLeadById,
+  findLeadForStaff,
   findRecentSubmission,
-  listQualifiedLeads,
+  listLeads,
 } from '@/lib/db/leads'
 import { parseLeadForm } from '@/lib/domain/lead-form'
 import { qualifyLead } from '@/lib/domain/qualification'
@@ -44,17 +44,17 @@ async function enviar(overrides: Partial<LeadFormValues>): Promise<Lead> {
   })
 }
 
-beforeEach(() => {
-  resetStore()
+beforeEach(async () => {
+  await resetDb()
 })
 
 describe('captación y filtro', () => {
   it('un envío calificado recibe folio y aparece en el portal', async () => {
     const lead = await enviar({})
     expect(lead.qualificationStatus).toBe('qualified')
-    expect(lead.caseNumber).toBe('SL-000001')
+    expect(lead.folio).toBe('SL-000001')
 
-    const page = await listQualifiedLeads()
+    const page = await listLeads()
     expect(page.total).toBe(1)
     expect(page.rows[0].id).toBe(lead.id)
   })
@@ -64,8 +64,8 @@ describe('captación y filtro', () => {
     const fuera = await enviar({ state: 'CAM', phone: '9811457023' }) // no califica
     const segundo = await enviar({ phone: '5590033471' }) // califica -> SL-000002
 
-    expect(fuera.caseNumber).toBeNull()
-    expect(segundo.caseNumber).toBe('SL-000002')
+    expect(fuera.folio).toBeNull()
+    expect(segundo.folio).toBe('SL-000002')
   })
 
   it('NO TODOS LOS FORMULARIOS LLEGAN AL PORTAL: los no calificados se guardan pero no se muestran', async () => {
@@ -75,22 +75,22 @@ describe('captación y filtro', () => {
 
     for (const lead of [campeche, viejo, limite]) {
       expect(lead.qualificationStatus).toBe('unqualified')
-      expect(lead.caseNumber).toBeNull()
+      expect(lead.folio).toBeNull()
     }
 
     // Existen en la base…
     expect(await countLeadsByStatus()).toEqual({ qualified: 0, unqualified: 3 })
     // …y no existen para los abogados.
-    expect((await listQualifiedLeads()).total).toBe(0)
+    expect((await listLeads()).total).toBe(0)
   })
 
   it('adivinar el id de un no calificado no permite leerlo', async () => {
     const fuera = await enviar({ state: 'CAM', phone: '9811457023' })
-    expect(await findQualifiedLeadById(fuera.id)).toBeNull()
+    expect(await findLeadForStaff(fuera.id)).toBeNull()
 
     const dentro = await enviar({})
-    expect((await findQualifiedLeadById(dentro.id))?.caseNumber).toBe('SL-000001')
-    expect(await findQualifiedLeadById('lead_inexistente')).toBeNull()
+    expect((await findLeadForStaff(dentro.id))?.folio).toBe('SL-000001')
+    expect(await findLeadForStaff('00000000-0000-4000-8000-000000000000')).toBeNull()
   })
 
   it('detecta el reenvío del mismo teléfono y el mismo despido', async () => {
@@ -109,20 +109,23 @@ describe('captación y filtro', () => {
     // No se recalcula al leer: si lo hiciera, un caso calificado acabaría
     // mostrando 70 u 80 días y parecería que el filtro falló.
     expect(lead.dismissalDaysAtSubmission).toBe(20)
-    expect((await findQualifiedLeadById(lead.id))?.dismissalDaysAtSubmission).toBe(20)
+    expect((await findLeadForStaff(lead.id))?.dismissalDaysAtSubmission).toBe(20)
   })
 
   it('la búsqueda del portal encuentra por nombre, folio y teléfono', async () => {
     const lead = await enviar({ fullName: 'María Fernanda Solís', phone: '5528461130' })
-    expect((await listQualifiedLeads({ query: 'fernanda' })).total).toBe(1)
-    expect((await listQualifiedLeads({ query: lead.caseNumber! })).total).toBe(1)
-    expect((await listQualifiedLeads({ query: '2846' })).total).toBe(1)
-    expect((await listQualifiedLeads({ query: 'nadie' })).total).toBe(0)
+    expect((await listLeads({ query: 'fernanda' })).total).toBe(1)
+    expect((await listLeads({ query: lead.folio! })).total).toBe(1)
+    expect((await listLeads({ query: '2846' })).total).toBe(1)
+    expect((await listLeads({ query: 'nadie' })).total).toBe(0)
   })
 
-  it('el repositorio devuelve copias, no referencias vivas', async () => {
+  it('lo que se lee viene de la base, no del objeto que devolvió el alta', async () => {
     const lead = await enviar({})
     lead.fullName = 'MUTADO'
-    expect((await findQualifiedLeadById(lead.id))?.fullName).toBe('Juan Pérez Villanueva')
+    // En memoria esto probaba que el repositorio clonaba. Con Postgres de por
+    // medio prueba algo más fuerte: que la lectura vuelve a la base y no hay
+    // ningún objeto vivo compartido que alguien pueda cambiar por detrás.
+    expect((await findLeadForStaff(lead.id))?.fullName).toBe('Juan Pérez Villanueva')
   })
 })

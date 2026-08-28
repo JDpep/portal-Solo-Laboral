@@ -25,13 +25,31 @@ export type LeadSubmissionState =
     }
   | { status: 'blocked'; message: string; values: LeadFormValues }
   /** Pasó el filtro inicial. NO significa que el caso esté aceptado. */
-  | { status: 'qualified'; caseNumber: string }
+  | { status: 'qualified'; folio: string; contact: ContactOptions }
   /**
    * `reason` existe para poder decirle a la persona CUÁL de las dos condiciones
    * falló. Queda opcional a propósito: si algún camino no lo trajera, la
    * pantalla cae al mensaje general en vez de inventar un motivo.
    */
   | { status: 'unqualified'; reason?: UnqualifiedReason }
+
+/**
+ * Las vías de contacto que se le ofrecen a quien calificó, ya resueltas EN EL
+ * SERVIDOR.
+ *
+ * El enlace de WhatsApp llega armado desde el servidor —número del despacho y
+ * mensaje incluidos— y el navegador solo lo abre. Si el cliente pudiera
+ * componerlo, bastaría con manipular un parámetro para que el formulario del
+ * despacho abriera conversaciones con el teléfono de cualquiera.
+ *
+ * `whatsappUrl` es null cuando no hay número configurado: entonces la opción
+ * sencillamente no se ofrece, en vez de pintar un botón que no lleva a nadie.
+ */
+export interface ContactOptions {
+  whatsappUrl: string | null
+  /** Minutos prometidos para la llamada próxima: "entre 10 y 15". */
+  quickCallWindow: { min: number; max: number }
+}
 
 /** Los motivos del motor, menos el que califica. */
 export type UnqualifiedReason = Exclude<
@@ -61,3 +79,22 @@ export type ScheduleCallState =
   | { status: 'scheduled'; preference: CallPreference }
 
 export const INITIAL_SCHEDULE_STATE: ScheduleCallState = { status: 'idle' }
+
+/**
+ * Resultado de pedir "que me llamen enseguida".
+ *
+ * Devuelve la ventana prometida, no una hora exacta: el sistema no conoce la
+ * agenda de los abogados, y decir "te llamamos a las 10:42" sería exactamente
+ * la promesa que este producto lleva evitando desde el primer día.
+ */
+export type QuickCallState =
+  | { status: 'idle' }
+  | { status: 'error'; message: string }
+  | { status: 'requested'; window: { min: number; max: number } }
+
+export const INITIAL_QUICK_CALL_STATE: QuickCallState = { status: 'idle' }
+
+/** Resultado de abrir WhatsApp. Solo importa cuando falla. */
+export type WhatsAppState = { status: 'idle' } | { status: 'error'; message: string }
+
+export const INITIAL_WHATSAPP_STATE: WhatsAppState = { status: 'idle' }

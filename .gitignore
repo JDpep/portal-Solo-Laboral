@@ -7,3 +7,7 @@ out
 next-env.d.ts
 .DS_Store
 .vercel
+
+# Sueltos del directorio de trabajo, no del proyecto.
+-w
+SCs Portal Sl /

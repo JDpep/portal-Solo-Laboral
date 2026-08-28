@@ -1,14 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  addDays,
-  compareDates,
-  daysBetween,
-  formatDate,
-  formatSubmittedAt,
-  isPlainDate,
-  plainDateOf,
-  today,
-} from '@/lib/dates'
+import { addDays, compareDates, daysBetween, formatDate, formatSubmittedAt, formatTime, instantFrom, isPlainDate, plainDateOf, today } from '@/lib/dates'
 
 describe('fechas civiles', () => {
   it('valida fechas civiles', () => {
@@ -49,5 +40,29 @@ describe('fechas civiles', () => {
     expect(formatSubmittedAt('2026-08-21T15:32:00.000Z', '2026-08-21')).toBe('Hoy · 09:32')
     expect(formatSubmittedAt('2026-08-20T15:32:00.000Z', '2026-08-21')).toBe('Ayer · 09:32')
     expect(formatSubmittedAt('2026-08-19T15:32:00.000Z', '2026-08-21')).toBe('19/08/2026 · 09:32')
+  })
+})
+
+describe('fecha civil del despacho a instante real', () => {
+  it('interpreta la hora elegida en la zona de Ciudad de México', () => {
+    // La persona pidió "el 15 de septiembre a las 10:00" en México. En UTC son
+    // las 16:00: sin esta conversión, un servidor en otra zona agendaría la
+    // llamada a una hora distinta de la que se le prometió.
+    expect(instantFrom('2026-09-15', '10:00')).toBe('2026-09-15T16:00:00.000Z')
+  })
+
+  it('no depende de la zona del servidor', () => {
+    // Se pide explícitamente la zona: el resultado es el mismo se ejecute
+    // donde se ejecute.
+    expect(instantFrom('2026-09-15', '10:00', 'America/Mexico_City')).toBe(
+      instantFrom('2026-09-15', '10:00'),
+    )
+    expect(instantFrom('2026-09-15', '10:00', 'UTC')).toBe('2026-09-15T10:00:00.000Z')
+  })
+
+  it('la hora que se guarda vuelve a leerse igual en la zona del despacho', () => {
+    const instant = instantFrom('2026-12-31', '17:30')
+    expect(formatTime(instant)).toBe('17:30')
+    expect(plainDateOf(instant)).toBe('2026-12-31')
   })
 })

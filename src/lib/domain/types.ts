@@ -1,4 +1,16 @@
-/** Entidades del sistema de captación y precalificación. */
+/**
+ * ENTIDADES DEL SISTEMA.
+ *
+ * LEAD y CASO son cosas distintas, y el sistema entero descansa en esa
+ * distinción:
+ *
+ *   LEAD  persona interesada que todavía se está revisando o contactando.
+ *   CASO  lead que el despacho decidió tomar y convertir en asunto operativo.
+ *
+ * Un lead puede convertirse en caso, no responder, o descartarse. Un caso
+ * SIEMPRE nace de un lead y hereda su folio: una sola referencia para la misma
+ * persona desde que llega hasta que se cierra su asunto.
+ */
 import type { PlainDate } from '@/lib/dates'
 import type { StateCode } from '@/lib/domain/states'
 import type { QualificationReason, QualificationStatus } from '@/lib/domain/qualification'
@@ -6,18 +18,59 @@ import type { CallPreference } from '@/lib/domain/call-time'
 
 export type Id = string
 
+// ─────────────────────────────────────────────────────────────────── usuarios
+
 /**
- * Un formulario público recibido, ya calificado.
+ * Miembro del despacho con acceso al portal.
  *
- * Se guardan TODOS los envíos, califiquen o no: sin los no calificados nadie
- * puede responder después "¿cuánta gente nos busca y por qué la dejamos
- * fuera?". Lo que cambia no es qué se guarda, sino qué se muestra: el portal
- * de abogados solo lee los `qualified` (ver src/lib/db/leads.ts).
+ *   admin   administra cuentas y las plantillas de la ruta del caso.
+ *   lawyer  opera: leads, casos, seguimiento y calendario.
+ *
+ * El rol se comprueba SIEMPRE en el servidor. Esconder un botón no es un
+ * permiso: quien escriba la URL a mano tiene que chocar contra la misma pared.
  */
+export type StaffRole = 'admin' | 'lawyer'
+
+export interface StaffUser {
+  id: Id
+  name: string
+  email: string
+  role: StaffRole
+  status: 'active' | 'inactive'
+  createdAt: string
+  lastLoginAt: string | null
+  /** Hash scrypt. Nunca sale del servidor. */
+  passwordHash: string | null
+}
+
+/** Vista segura para el cliente: sin hash de contraseña. */
+export type PublicStaffUser = Omit<StaffUser, 'passwordHash'>
+
+// ────────────────────────────────────────────────────────────────────── leads
+
+/** Cómo llegó. Permite medir después de dónde vienen los casos. */
+export type LeadSource = 'web_form' | 'manual' | 'phone' | 'whatsapp' | 'other'
+
+/**
+ * Dónde está el lead. `converted` es terminal: a partir de ahí manda el caso.
+ */
+export type LeadStatus = 'new' | 'contacted' | 'converted' | 'discarded' | 'no_response'
+
+/**
+ * Cómo pidió la persona que la contactaran, después de calificar.
+ *
+ * Es una PREFERENCIA suya, no un estado del lead ni una promesa del despacho:
+ * haber elegido WhatsApp no significa que nadie le haya escrito todavía.
+ */
+export type ContactMethod = 'whatsapp' | 'scheduled_call' | 'quick_call'
+
 export interface Lead {
   id: Id
-  /** "SL-000001". Solo existe para los calificados; null en el resto. */
-  caseNumber: string | null
+  /**
+   * "SL-000001". Null SOLO en los envíos del formulario que no calificaron;
+   * un alta manual siempre lo lleva, porque registrarla ya fue una decisión.
+   */
+  folio: string | null
 
   fullName: string
   /** 10 dígitos normalizados, sin lada de país ni separadores. */
@@ -25,6 +78,9 @@ export interface Lead {
   state: StateCode
   dismissalDate: PlainDate
   description: string
+
+  source: LeadSource
+  status: LeadStatus
 
   /** Instante real del envío (ISO UTC), para ordenar y para mostrar la hora. */
   submittedAt: string
@@ -35,21 +91,39 @@ export interface Lead {
   qualificationReason: QualificationReason
   /**
    * Días desde el despido AL MOMENTO DEL ENVÍO. Congelado a propósito: si se
-   * recalculara al abrir el caso, un prospecto calificado empezaría a
-   * mostrar 70, 80, 90 días y parecería que el filtro falló.
+   * recalculara al abrir el caso, un prospecto calificado empezaría a mostrar
+   * 70, 80, 90 días y parecería que el filtro falló.
    */
   dismissalDaysAtSubmission: number
 
   /**
-   * Franja en la que la persona pidió que le llamaran, elegida DESPUÉS de
-   * calificar. Null cuando no eligió — que es un caso normal, no un error: el
-   * paso es opcional y el abogado llama igual.
-   *
-   * Solo puede existir en un lead `qualified`: a quien no calificó nunca se le
-   * ofrece la pantalla, y el repositorio lo impide de todos modos.
+   * Hora en que la persona pidió que le llamaran. Null cuando no eligió — que
+   * es un caso normal, no un error: el paso es opcional y el abogado llama
+   * igual. Es una preferencia, no una reserva contra una agenda.
    */
   callPreference: CallPreference | null
   callPreferenceSetAt: string | null
+
+  /** Vía que eligió tras calificar. Null si no eligió ninguna. */
+  preferredContactMethod: ContactMethod | null
+  /**
+   * Abrió WhatsApp con el mensaje preparado. NO dice que lo enviara: con un
+   * enlace wa.me el sistema no puede saberlo, y afirmarlo sería inventar.
+   */
+  whatsappOpenedAt: string | null
+  /** Momento previsto de la llamada próxima. Previsión, no compromiso. */
+  scheduledCallAt: string | null
+  /** Contacto REAL. Nunca lo llena abrir WhatsApp ni pedir una llamada. */
+  contactedAt: string | null
+
+  /** Notas internas del despacho. Vacío en los envíos del formulario. */
+  notes: string
+  /** Quién lo capturó. Null cuando entró solo por el formulario público. */
+  createdBy: Id | null
+
+  /** En qué caso acabó, si se convirtió. */
+  caseId: Id | null
+  convertedToCaseAt: string | null
 
   /**
    * Registro de demostración. La interfaz lo rotula DEMO y NO ofrece llamar ni
@@ -58,25 +132,192 @@ export interface Lead {
    */
   isDemo: boolean
 
+  /**
+   * Si el despacho puede verlo. Lo calcula la BASE, no la aplicación:
+   * calificados del formulario + todo lo capturado a mano.
+   */
+  visibleToStaff: boolean
+
   createdAt: string
+  updatedAt: string
+}
+
+// ────────────────────────────────────────────────────────────────────── casos
+
+export type CaseStatus =
+  | 'active'
+  | 'waiting_client'
+  | 'scheduled'
+  | 'in_process'
+  | 'completed'
+  | 'discontinued'
+  | 'archived'
+
+/** Por qué se terminó el seguimiento. Terminar NO es borrar. */
+export type CaseCloseReason =
+  | 'client_declined'
+  | 'client_unresponsive'
+  | 'not_viable'
+  | 'completed'
+  | 'other'
+
+export interface Case {
+  id: Id
+  /** Heredado del lead. */
+  folio: string
+  leadId: Id
+
+  status: CaseStatus
+  /** Sale del primer paso sin terminar de la ruta; no se escribe a mano. */
+  currentStage: string
+  assignedUserId: Id | null
+
+  openedAt: string
+  closedAt: string | null
+  closedReason: CaseCloseReason | null
+  closedNote: string
+  closedBy: Id | null
+
+  createdBy: Id | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Lo que necesita una fila de Seguimiento, en una sola consulta. */
+export interface CaseSummary extends Case {
+  clientName: string
+  phone: string
+  dismissalDate: PlainDate
+  submittedAt: string
+  assignedUserName: string | null
+  isDemo: boolean
+  /** Pasos terminados sobre pasos que cuentan (los N/A no cuentan). */
+  progress: { completed: number; total: number }
+  nextEvent: { id: Id; type: EventType; title: string; startAt: string } | null
+}
+
+// ──────────────────────────────────────────────────────────── ruta del caso
+
+export type ChecklistItemStatus = 'pending' | 'in_progress' | 'completed' | 'not_applicable'
+
+export interface ChecklistItem {
+  id: Id
+  caseId: Id
+  templateItemId: Id | null
+  title: string
+  description: string
+  status: ChecklistItemStatus
+  position: number
+  assignedUserId: Id | null
+  startedAt: string | null
+  completedAt: string | null
+  completedBy: Id | null
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ChecklistTemplate {
+  id: Id
+  name: string
+  description: string
+  isDefault: boolean
+  isActive: boolean
+  items: ChecklistTemplateItem[]
+}
+
+export interface ChecklistTemplateItem {
+  id: Id
+  templateId: Id
+  title: string
+  description: string
+  position: number
+}
+
+// ───────────────────────────────────────────────────────────────── calendario
+
+export type EventType =
+  | 'call'
+  | 'hearing'
+  | 'conciliation'
+  | 'meeting'
+  | 'follow_up'
+  | 'deadline'
+  | 'other'
+
+export type EventStatus = 'scheduled' | 'done' | 'cancelled'
+export type EventSource = 'web_form' | 'manual' | 'system'
+
+export interface CalendarEvent {
+  id: Id
+  leadId: Id | null
+  caseId: Id | null
+  eventType: EventType
+  title: string
+  description: string
+  startAt: string
+  endAt: string | null
+  assignedUserId: Id | null
+  status: EventStatus
+  source: EventSource
+  createdBy: Id | null
+  externalProvider: string | null
+  externalEventId: string | null
+  cancelledAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+// ──────────────────────────────────────────────────────────────── historia
+
+export interface CaseStatusChange {
+  id: Id
+  caseId: Id
+  previousStatus: CaseStatus | null
+  newStatus: CaseStatus
+  changedBy: Id | null
+  changedByName: string | null
+  changedAt: string
+  reason: string
 }
 
 /**
- * Miembro del despacho con acceso al portal interno.
- *
- * No hay registro público ni roles: en esta etapa el portal tiene una sola
- * pantalla y todos los que entran hacen lo mismo — ver casos y llamar.
+ * Acciones que se registran en la bitácora. La lista es cerrada a propósito:
+ * un string libre acaba con tres formas distintas de escribir lo mismo y una
+ * bitácora que no se puede consultar.
  */
-export interface StaffUser {
-  id: Id
-  name: string
-  email: string
-  status: 'active' | 'inactive'
-  createdAt: string
-  lastLoginAt: string | null
-  /** Hash scrypt. Nunca sale del servidor. */
-  passwordHash: string | null
-}
+export type AuditAction =
+  | 'login'
+  | 'login_failed'
+  | 'logout'
+  | 'lead_create'
+  | 'lead_manual_create'
+  | 'lead_update'
+  | 'lead_convert_to_case'
+  | 'lead_whatsapp_opened'
+  | 'lead_contact_method_set'
+  | 'lead_quick_call_requested'
+  | 'case_create'
+  | 'case_status_change'
+  | 'case_assign'
+  | 'case_close'
+  | 'case_reopen'
+  | 'checklist_item_start'
+  | 'checklist_item_complete'
+  | 'checklist_item_update'
+  | 'event_create'
+  | 'event_update'
+  | 'event_cancel'
 
-/** Vista segura para el cliente: sin hash de contraseña. */
-export type PublicStaffUser = Omit<StaffUser, 'passwordHash'>
+export interface AuditEntry {
+  id: Id
+  userId: Id | null
+  userName: string | null
+  action: AuditAction
+  entity: string
+  entityId: Id | null
+  before: unknown
+  after: unknown
+  ip: string | null
+  createdAt: string
+}

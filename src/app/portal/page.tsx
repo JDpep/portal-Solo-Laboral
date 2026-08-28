@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ChevronRight, MessageCircle, Phone } from 'lucide-react'
 import { requireStaff } from '@/lib/auth/guard'
-import { listQualifiedLeads } from '@/lib/db/leads'
+import { listLeads } from '@/lib/db/leads'
 import type { LeadSortKey } from '@/lib/db/leads'
 import { formatDate, formatSubmittedAt, today } from '@/lib/dates'
 import { formatPhone, telHref, whatsappHref } from '@/lib/domain/phone'
@@ -13,17 +13,17 @@ import { RefreshButton, RefreshDim } from '@/components/portal/Refresh'
 import { Pagination } from '@/components/ui/Pagination'
 import { TBody, TD, THead, TR } from '@/components/ui/Table'
 import { DemoNotice, EmptyState } from '@/components/ui/States'
-import { CallTimeBadge, DaysBadge, DemoBadge } from '@/components/ui/Badge'
+import { CallTimeBadge, ContactMethodBadge, DaysBadge, DemoBadge } from '@/components/ui/Badge'
 
 export const dynamic = 'force-dynamic'
 
-const SORT_KEYS: LeadSortKey[] = ['caseNumber', 'submittedAt', 'fullName', 'dismissalDate']
+const SORT_KEYS: LeadSortKey[] = ['folio', 'submittedAt', 'fullName', 'dismissalDate']
 
 /**
  * CASOS POR CONTACTAR.
  *
  * Solo aparecen los prospectos calificados, y el filtro no vive aquí sino en
- * `listQualifiedLeads`: esta pantalla no tiene forma de pedir los demás.
+ * `listLeads`: esta pantalla no tiene forma de pedir los demás.
  * El abogado entra, ve a quién llamar y abre el caso. Nada más.
  *
  * DISEÑADA PARA EL TELÉFONO. La lista se consulta más desde el celular que
@@ -45,7 +45,7 @@ export default async function PortalPage({
   ) as LeadSortKey
   const direction = params.dir === 'asc' ? 'asc' : 'desc'
 
-  const result = await listQualifiedLeads({
+  const result = await listLeads({
     query: params.q,
     sort,
     direction,
@@ -122,16 +122,21 @@ export default async function PortalPage({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-semibold text-sl-primary">
-                          {lead.caseNumber}
+                          {lead.folio}
                         </span>
                         {lead.isDemo ? <DemoBadge /> : null}
                       </div>
                       <p className="mt-1 truncate text-base font-semibold text-sl-text">
                         {lead.fullName}
                       </p>
-                      {lead.callPreference ? (
-                        <p className="mt-1.5">
-                          <CallTimeBadge preference={lead.callPreference} />
+                      {lead.preferredContactMethod || lead.callPreference ? (
+                        <p className="mt-1.5 flex flex-wrap gap-1.5">
+                          {lead.preferredContactMethod ? (
+                            <ContactMethodBadge method={lead.preferredContactMethod} />
+                          ) : null}
+                          {lead.callPreference ? (
+                            <CallTimeBadge preference={lead.callPreference} />
+                          ) : null}
                         </p>
                       ) : null}
                       <p className="mt-1.5 text-sm text-sl-muted">
@@ -192,7 +197,7 @@ export default async function PortalPage({
                       />
                       <SortHeader
                         label="Folio"
-                        sortKey="caseNumber"
+                        sortKey="folio"
                         currentSort={sort}
                         currentDirection={direction}
                         basePath="/portal"
@@ -237,14 +242,19 @@ export default async function PortalPage({
                             {lead.fullName}
                           </Link>
                           {lead.isDemo ? <DemoBadge className="ml-2" /> : null}
-                          {lead.callPreference ? (
-                            <span className="mt-1 block font-normal">
-                              <CallTimeBadge preference={lead.callPreference} />
+                          {lead.preferredContactMethod || lead.callPreference ? (
+                            <span className="mt-1 flex flex-wrap gap-1.5 font-normal">
+                              {lead.preferredContactMethod ? (
+                                <ContactMethodBadge method={lead.preferredContactMethod} />
+                              ) : null}
+                              {lead.callPreference ? (
+                                <CallTimeBadge preference={lead.callPreference} />
+                              ) : null}
                             </span>
                           ) : null}
                         </TD>
                         <TD className="whitespace-nowrap font-mono text-xs font-semibold text-sl-primary">
-                          {lead.caseNumber}
+                          {lead.folio}
                         </TD>
                         <TD className="whitespace-nowrap text-sl-muted">
                           {formatSubmittedAt(lead.submittedAt, reference)}

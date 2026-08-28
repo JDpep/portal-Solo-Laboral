@@ -52,7 +52,7 @@ export function LeadForm({ todayDate }: { todayDate: string }) {
   if (finished) {
     return (
       <div ref={headingRef} tabIndex={-1} className="sl-in outline-none">
-        <SubmissionResult state={state} todayDate={todayDate} />
+        <SubmissionResult state={state} />
       </div>
     )
   }

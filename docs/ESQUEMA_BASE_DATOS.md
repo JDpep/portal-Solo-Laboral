@@ -1,125 +1,124 @@
-# ESQUEMA DE BASE DE DATOS — Fase 2
+# ESQUEMA DE BASE DE DATOS
 
-En Fase 1 los datos viven en memoria (`src/lib/db/store.ts`). Este es el
-esquema que los sustituye, sin cambiar ninguna firma de repositorio.
+**La fuente de verdad son las migraciones**, en `db/migrations/`. Este
+documento explica POR QUÉ el esquema es como es; el SQL exacto vive allí y se
+aplica con `npm run db:migrate`.
 
----
-
-## `lead_submissions`
-
-Guarda **todos** los envíos, califiquen o no. Sin los no calificados nadie
-puede responder después "¿cuánta gente nos busca y por qué la dejamos fuera?".
-
-```sql
-CREATE TYPE qualification_status AS ENUM ('qualified', 'unqualified');
-
-CREATE TYPE qualification_reason AS ENUM (
-  'qualified_allowed_state_and_recent_dismissal',
-  'unqualified_state',
-  'unqualified_dismissal_date',
-  'unqualified_state_and_dismissal_date'
-);
-
-CREATE TABLE lead_submissions (
-  id                            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-
-  -- Folio visible. NULL para los no calificados: es un recurso escaso y
-  -- visible, solo lo consume quien pasa el filtro.
-  case_number                   text UNIQUE,
-
-  full_name                     text        NOT NULL,
-  -- 10 dígitos normalizados, sin lada de país ni separadores.
-  phone                         char(10)    NOT NULL,
-  -- Clave de 3 letras del catálogo de src/lib/domain/states.ts ('CMX', 'MEX'…).
-  state                         char(3)     NOT NULL,
-  -- DATE, no timestamptz: es una fecha civil sin hora. Convertirla a UTC la
-  -- corre un día según la zona del servidor, y con un límite de exactamente
-  -- 60 días ese día decide si el caso entra o no.
-  dismissal_date                date        NOT NULL,
-  case_description              text        NOT NULL,
-
-  submitted_at                  timestamptz NOT NULL DEFAULT now(),
-  -- Fecha civil de CDMX que usó el motor. Hace reproducible la decisión.
-  submitted_on                  date        NOT NULL,
-
-  qualification_status          qualification_status NOT NULL,
-  qualification_reason          qualification_reason NOT NULL,
-  -- Congelado a propósito: NO se recalcula al leer (ver MOTOR_CALIFICACION.md §5).
-  dismissal_days_at_submission  integer     NOT NULL CHECK (dismissal_days_at_submission >= 0),
-
-  -- Registro sembrado para demostración. Siempre false en datos reales.
-  is_demo                       boolean     NOT NULL DEFAULT false,
-
-  created_at                    timestamptz NOT NULL DEFAULT now(),
-
-  -- El folio y el veredicto no pueden contradecirse.
-  CONSTRAINT case_number_solo_si_califica CHECK (
-    (qualification_status = 'qualified'   AND case_number IS NOT NULL) OR
-    (qualification_status = 'unqualified' AND case_number IS NULL)
-  )
-);
-
--- La consulta del portal: calificados, más recientes primero.
-CREATE INDEX lead_submissions_por_contactar
-  ON lead_submissions (submitted_at DESC)
-  WHERE qualification_status = 'qualified';
-
--- Detección de envíos repetidos.
-CREATE INDEX lead_submissions_repetidos
-  ON lead_submissions (phone, dismissal_date, submitted_at DESC);
-```
-
-### Folio
-
-```sql
-CREATE SEQUENCE lead_case_number_seq;
--- 'SL-' || lpad(nextval('lead_case_number_seq')::text, 6, '0')
-```
-
-Se consume **solo** al insertar un calificado. Seis dígitos alcanzan para
-999 999 solicitudes.
+Postgres (Supabase, provisionado desde Vercel). El navegador nunca habla con la
+base: todas las tablas tienen RLS activo y **ninguna política**, así que la
+llave publicable no lee ni escribe nada. La única puerta es el servidor.
 
 ---
 
-## `staff_users`
+## Las nueve tablas
 
-```sql
-CREATE TABLE staff_users (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name          text        NOT NULL,
-  email         citext      NOT NULL UNIQUE,
-  status        text        NOT NULL DEFAULT 'active'
-                            CHECK (status IN ('active', 'inactive')),
-  password_hash text,
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  last_login_at timestamptz
-);
-```
-
-No hay borrado: una cuenta se desactiva. `password_hash` es `scrypt$sal$hash`.
+| Tabla | Qué guarda |
+|---|---|
+| `staff_users` | Cuentas del despacho. Roles `admin` y `lawyer`. |
+| `leads` | Todos los envíos y las altas manuales. Califiquen o no. |
+| `cases` | Los leads que el despacho decidió tomar. |
+| `case_checklist_templates` · `_template_items` | La ruta del caso, como datos editables. |
+| `case_checklist_items` | Los pasos REALES de un caso, copiados de la plantilla. |
+| `calendar_events` | Llamadas, audiencias, conciliaciones, juntas. |
+| `case_status_history` | Cada cambio de estado de un caso. Append-only. |
+| `audit_logs` | Quién hizo qué. Append-only. |
 
 ---
 
-## Si se usa Supabase (RLS)
+## Lo que la BASE hace cumplir, y no la aplicación
 
-`lead_submissions` contiene datos personales. Con RLS activo:
+Estas garantías están puestas en Postgres a propósito: una comprobación en el
+código se puede olvidar al escribir la siguiente pantalla, y dos peticiones
+simultáneas pueden ganarla las dos.
 
-```sql
-ALTER TABLE lead_submissions ENABLE ROW LEVEL SECURITY;
--- Sin políticas de SELECT para anon ni authenticated: el portal lee con la
--- clave de servicio desde el servidor, nunca desde el navegador.
+**Un lead se convierte en caso una sola vez** — `cases.lead_id UNIQUE`. Dos
+abogados pulsando el botón a la vez: uno crea el caso, el otro recibe un error
+claro. No hay forma de acabar con dos casos para la misma persona.
+
+**El folio es único y consecutivo** — `folio_seq` + `next_folio()`. Diez altas
+en el mismo milisegundo se llevan diez folios distintos. Nadie lo escribe a
+mano.
+
+**Lo que el despacho puede ver** — `leads.visible_to_staff`, columna generada:
+`qualification_status = 'qualified' OR source <> 'web_form'`. Los envíos del
+formulario solo si pasaron el filtro; lo capturado a mano siempre, porque
+registrarlo ya fue la decisión. Un listado nuevo hereda el filtro por
+construcción. El CHECK `folio_solo_si_visible` impide que folio y visibilidad
+se contradigan.
+
+**La historia no se reescribe** — `audit_logs` y `case_status_history` tienen
+un trigger que RECHAZA `UPDATE` y `DELETE`. Aplica también a la clave de
+servicio: ni la aplicación ni un administrador pueden borrar su rastro. (Las
+pruebas de integración tienen que usar `TRUNCATE` para limpiarlas: que la
+propia suite tenga que esquivarlo es la prueba de que el candado está puesto.)
+
+**Nada se borra** — no hay `DELETE` en ningún repositorio, y las claves
+foráneas son `ON DELETE RESTRICT`. Un caso que no continúa se cierra con su
+motivo; una cuenta que se va se desactiva.
+
+**Una sola llamada pedida por lead** — índice único parcial sobre
+`calendar_events (lead_id) WHERE source = 'web_form' AND event_type = 'call'`.
+Si la persona cambia de opinión, se mueve el mismo evento. Un formulario
+reenviado dos veces por una conexión mala no llena la agenda de duplicados.
+
+**La conversión es atómica** — `convert_lead_to_case()`, en plpgsql. Crea el
+caso, copia la ruta desde la plantilla, mueve el lead, arrastra sus eventos,
+anota el estado inicial y firma la bitácora. Si algo falla, no queda nada a
+medias.
+
+**La etapa actual no se escribe a mano** — un trigger la deriva del primer paso
+sin terminar de la ruta, así que no puede contradecir lo que se ve al abrir el
+caso.
+
+---
+
+## Decisiones de tipos
+
+**`dismissal_date` es `date`, no `timestamptz`.** Es una fecha civil sin hora:
+convertirla a UTC la corre un día según dónde viva el servidor, y con el límite
+de exactamente 60 días ese día decide si el caso entra o no. Se lee siempre
+como texto (`::text`) por la misma razón.
+
+**`dismissal_days_at_submission` está congelado.** No se recalcula al leer. Si
+lo hiciera, un prospecto calificado empezaría a mostrar 70, 80, 90 días y
+parecería que el filtro falló.
+
+**`phone` es `char(10)`** — diez dígitos normalizados, sin lada de país ni
+separadores, con un CHECK que lo obliga.
+
+**Los pasos de la ruta se COPIAN, no se referencian.** Si la plantilla cambia
+mañana, los casos en curso no se alteran debajo de quien los está trabajando.
+
+---
+
+## Cómo se aplica
+
+```bash
+npm run db:migrate                    # aplica lo pendiente en public
+npm run db:migrate -- --dry           # dice qué falta, sin tocar nada
+npm run db:migrate -- --schema test   # réplica completa para las pruebas
+npm run db:seed                       # cuentas del despacho
+npm run db:seed -- --demo             # además, seis solicitudes de ejemplo
 ```
 
-La inserción del formulario público también debe ocurrir **en el servidor**: si
-el navegador pudiera insertar directo, podría insertar con
-`qualification_status = 'qualified'` y saltarse el motor por completo.
+Cada migración corre **dentro de una transacción** y queda anotada en
+`schema_migrations`: o entra entera o no entra.
+
+El esquema `test` es una copia exacta —mismas tablas, mismos triggers, mismas
+restricciones— en la misma base. Las pruebas de integración comprueban las
+garantías de arriba contra Postgres de verdad sin poder rozar un dato del
+despacho.
 
 ---
 
 ## Lo que NO tiene el esquema
 
 - **Ninguna función de borrado.** La ausencia es la garantía.
-- **Estados de seguimiento** (contactado / no respondió / contratado). Es el
-  siguiente paso natural del producto; cuando se pida, entra como tabla
-  `lead_contacts` append-only en vez de como columna mutable, para no perder el
-  historial de intentos.
+- **`whatsapp_message_sent`.** Con un enlace `wa.me` el sistema no puede saber
+  si la persona envió el mensaje: solo que abrió la aplicación. Se guarda
+  `whatsapp_opened_at` y nada más. El día que exista WhatsApp Business API y
+  llegue confirmación real, eso entra como dato aparte y con otro nombre.
+- **`lead_contact_events`.** Los eventos con hora ya viven en
+  `calendar_events` —que es lo que el abogado abre en su agenda— y el rastro de
+  lo que hizo el prospecto ya vive en `audit_logs`. Una tercera tabla habría
+  creado dos versiones de la misma verdad.

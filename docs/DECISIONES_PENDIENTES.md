@@ -32,12 +32,22 @@ formulario y el pie. **No salir a producción sin esto.**
 
 **Falta:** quiénes entran al portal, con qué correos.
 
-**Provisional:** una sola cuenta sembrada, visible en `/acceso` mientras dure la
-Fase 1 (`abogados@sololaboral.demo` / `SoloLaboral2026`).
+**Resuelto en parte (2026-08-27):** con base real, las cuentas se crean con
+`npm run db:seed`. Hay dos roles: `admin` y `lawyer`.
 
-**Decisión tomada:** no se construyó pantalla de administración de usuarios. En
-Fase 1 los cambios se perderían al reiniciar el proceso, y el alcance pedido no
-la incluye. En Fase 2 las cuentas se dan de alta en la base.
+**Cambio (2026-08-28):** mientras se enseña el portal, la siembra deja dos
+cuentas de demostración de correo fijo —`Admin@SL.mx` (admin) y `User@SL.mx`
+(lawyer)— y da de baja las anteriores. La contraseña sale de
+`SEED_DEMO_PASSWORD` en `.env.local`, no del código: **el repositorio es público
+y estas cuentas entran al portal real**, con datos personales de prospectos
+dentro. Siguen sin aparecer en la pantalla de acceso. **Hay que sustituirlas por
+cuentas del despacho antes de operar con clientes reales.**
+
+**Y se quitó de la puerta lo que estaba publicado ahí.** Mientras duró la
+Fase 1, `/acceso` mostraba el usuario y la contraseña de demostración. Con
+cuentas reales eso era entregarle el portal a cualquiera que abriera la página.
+
+**Falta:** los correos reales del despacho y quién es administrador.
 
 **Si el despacho quiere administrar sus cuentas desde el portal**, es una
 pantalla nueva y hay que pedirla.
@@ -58,6 +68,13 @@ varias veces al día).
 **Provisional:** nada. No se eligió proveedor de correo ni de mensajería, y
 elegirlo sin preguntar habría metido una dependencia y un costo recurrente que
 el despacho no pidió.
+
+**Actualización (2026-08-28):** el hueco es más grande que antes, no más
+pequeño. Desde que existe la opción de "que me llamen en los próximos 10 a 15
+minutos", el sistema promete un plazo corto y sigue sin avisarle a nadie. La
+llamada queda agendada en el calendario, pero si nadie abre el portal, nadie la
+ve. **Esto es lo primero que hay que resolver antes de publicitar el
+formulario.**
 
 ---
 
@@ -232,6 +249,79 @@ falseados, el remedio no es volver al mensaje mudo: es verificar en la llamada.
    Estado de México**, no solo la zona conurbada. Quien lea el mensaje ya está
    fuera de ambos, así que nadie se queda sin atención por esto — pero si el
    despacho sí atiende Toluca o Tejupilco, conviene decir "Estado de México".
+
+---
+
+### 13. El número de WhatsApp del despacho
+
+**Falta:** el número oficial al que deben llegar los mensajes de los
+prospectos.
+
+**Provisional (2026-08-28):** sin `SOLO_LABORAL_WHATSAPP_NUMBER` configurado,
+la opción de WhatsApp **no se ofrece**: la pantalla muestra solo "Agendar
+llamada" y "Prefiero que me llamen". Es deliberado — más vale una pantalla con
+dos caminos que un botón que abre una conversación con nadie, o peor, con un
+número equivocado.
+
+**Al recibirlo:** se pone la variable de entorno en Vercel (formato
+internacional, 52 + 10 dígitos) y la opción aparece sola. No hace falta
+desplegar código.
+
+**Ojo con qué número se da.** Va a recibir mensajes de gente que acaba de
+perder su trabajo, con su folio. Si es el móvil personal de alguien del
+despacho, esos mensajes viven en ese teléfono y se van con esa persona.
+
+---
+
+### 14. Abrir WhatsApp no es haber enviado el mensaje
+
+**Decisión tomada (2026-08-28), y conviene que el despacho la entienda:**
+cuando alguien pulsa "Hablar por WhatsApp", el sistema guarda
+`whatsapp_opened_at` y **nada más**.
+
+Con un enlace `wa.me` el sistema pierde de vista a la persona en cuanto salta a
+la aplicación: no sabe si envió el mensaje, si lo pensó mejor, o si se quedó
+sin batería. Guardar "mensaje enviado" porque alguien tocó un botón llenaría el
+portal de conversaciones que el abogado creería tener y no tiene — y dejaría de
+llamar a quien sí lo necesita.
+
+La ficha del lead lo dice con todas sus letras: *"Eso no confirma que llegara a
+enviarlo: revisa el WhatsApp del despacho."*
+
+**Si el despacho quiere certeza**, hace falta WhatsApp Business API: entonces sí
+llega confirmación real de que la conversación empezó, y eso se guardaría
+aparte y con otro nombre. Es una pieza nueva, con su costo y su alta.
+
+---
+
+### 15. Qué significa "contactado"
+
+**Decisión tomada (2026-08-28):** `contacted_at` **solo** se sella cuando hay
+señal real de que alguien del despacho habló con la persona. No lo llena abrir
+WhatsApp, ni pedir una llamada, ni agendarla.
+
+Elegir una vía es una intención del prospecto; contactar es un acto del
+despacho. Mezclarlos escondería en la lista a quien todavía está esperando.
+
+**Falta:** hoy no hay pantalla para marcarlo a mano. Entra con los estados
+posteriores a la llamada (punto 9).
+
+---
+
+### 16. La ventana de la llamada próxima
+
+**Decisión tomada (2026-08-28):** "aproximadamente en los próximos 10 a 15
+minutos", confirmada por el despacho. El evento se agenda en el **mínimo** de
+esa ventana: más vale que el abogado la vea un poco antes de lo prometido que
+un poco después.
+
+Se cambia con `QUICK_CALL_MIN_DELAY` y `QUICK_CALL_MAX_DELAY`, sin tocar
+código.
+
+**Es la promesa más apretada del producto.** Todo lo demás dice "haremos lo
+posible"; esto da un número. Conviene vigilarlo con las primeras solicitudes
+reales, y está atado al punto 3: si nadie se entera de que entró, no hay
+ventana que valga.
 
 ---
 

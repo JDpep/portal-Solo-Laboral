@@ -1,7 +1,6 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { ensureSeeded } from '@/lib/db'
 import { findUserByEmail, touchLastLogin } from '@/lib/db/users'
 import { verifyPassword } from '@/lib/auth/password'
 import { clearSessionCookie, clientIp, setSessionCookie } from '@/lib/auth/session'
@@ -12,8 +11,6 @@ export interface LoginState {
 }
 
 export async function loginAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  await ensureSeeded()
-
   const email = String(formData.get('email') ?? '').trim()
   const password = String(formData.get('password') ?? '')
   if (!email || !password) return { error: 'Escribe tu correo y tu contraseña.' }

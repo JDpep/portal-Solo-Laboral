@@ -1,25 +1,18 @@
 /**
- * Punto de entrada del acceso a datos. Nadie fuera de src/lib/db toca
- * `getStore()`. En Fase 2 estos repositorios cambian por consultas SQL
- * manteniendo la misma firma.
+ * Punto de entrada del acceso a datos.
+ *
+ * Nadie fuera de src/lib/db abre una conexión ni escribe SQL. Las páginas y
+ * las server actions llaman a estos repositorios y nada más.
+ *
+ * Ya no existe `ensureSeeded()`: los datos viven en Postgres, así que las
+ * cuentas y las plantillas se crean una vez con `npm run db:seed` en vez de
+ * sembrarse en cada petición. Con ello desaparecen de golpe los problemas de
+ * la Fase 1 —ids distintos por instancia, folios que se recorrían al
+ * reiniciar— porque ahora el dato es uno solo.
  */
-import { getStore } from '@/lib/db/store'
-import { seedIfEmpty } from '@/lib/db/seed'
-
-let seeding: Promise<void> | null = null
-
-/** Idempotente y a prueba de llamadas concurrentes. */
-export async function ensureSeeded(): Promise<void> {
-  if (getStore().seeded) return
-  // El candado se libera al terminar: si el almacén se reinicia (tests, o un
-  // proceso nuevo), la siguiente llamada vuelve a sembrar.
-  if (!seeding) {
-    seeding = seedIfEmpty().finally(() => {
-      seeding = null
-    })
-  }
-  await seeding
-}
-
+export { db, transaction, closeDb } from '@/lib/db/sql'
 export * from '@/lib/db/users'
 export * from '@/lib/db/leads'
+export * from '@/lib/db/cases'
+export * from '@/lib/db/checklist'
+export * from '@/lib/db/audit'

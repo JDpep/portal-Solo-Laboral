@@ -1,9 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ensureSeeded } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth/session'
-import { DEMO_CREDENTIALS } from '@/lib/db/seed'
 import { LoginForm } from '@/app/acceso/LoginForm'
 import { Logo } from '@/components/brand/Logo'
 
@@ -16,7 +14,6 @@ export const metadata: Metadata = {
 }
 
 export default async function AccesoPage() {
-  await ensureSeeded()
   if (await getCurrentUser()) redirect('/portal')
 
   return (
@@ -33,25 +30,6 @@ export default async function AccesoPage() {
             Acceso exclusivo del despacho. No existe registro público.
           </p>
           <LoginForm />
-        </div>
-
-        {/* Accesos de la demo de Fase 1. Este bloque se elimina al conectar la base real. */}
-        <div className="mt-6 rounded-sl border border-dashed border-sl-warning/60 bg-sl-warning/5 p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sl-warning">
-            Acceso DEMO — Fase 1
-          </p>
-          <dl className="space-y-2 text-xs text-sl-muted">
-            {DEMO_CREDENTIALS.map((c) => (
-              <div key={c.email}>
-                <dt className="font-medium text-sl-text">{c.name}</dt>
-                <dd className="font-mono leading-relaxed">
-                  {c.email}
-                  <span className="mx-1.5 text-sl-muted/60">·</span>
-                  {c.password}
-                </dd>
-              </div>
-            ))}
-          </dl>
         </div>
 
         <p className="mt-6 text-center text-xs text-sl-muted">

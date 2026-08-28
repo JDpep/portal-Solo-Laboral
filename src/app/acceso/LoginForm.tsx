@@ -20,7 +20,7 @@ export function LoginForm() {
         type="email"
         autoComplete="username"
         required
-        placeholder="nombre@sololaboral.mx"
+        placeholder="nombre@SL.mx"
       />
       <TextField
         name="password"

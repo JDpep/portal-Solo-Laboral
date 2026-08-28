@@ -1,8 +1,10 @@
 import clsx from 'clsx'
-import { PhoneCall } from 'lucide-react'
+import { Clock, MessageCircle, PhoneCall } from 'lucide-react'
 import { formatDateChip } from '@/lib/dates'
 import { formatCallTime } from '@/lib/domain/call-time'
 import type { CallPreference } from '@/lib/domain/call-time'
+import { CONTACT_METHOD_LABEL, CONTACT_METHOD_TONE } from '@/lib/domain/labels'
+import type { ContactMethod } from '@/lib/domain/types'
 
 const base =
   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap'
@@ -85,5 +87,29 @@ export function DemoBadge({ className }: { className?: string }) {
     >
       DEMO
     </span>
+  )
+}
+
+/**
+ * Vía por la que la persona eligió que la contactaran.
+ *
+ * Dice "Pidió WhatsApp" y no "WhatsApp" a secas: es lo que ELIGIÓ, no algo que
+ * el despacho ya haya hecho. La diferencia importa cuando el abogado abre la
+ * lista para decidir a quién atiende primero — y más aún porque abrir WhatsApp
+ * no significa siquiera que la persona llegara a enviar su mensaje.
+ */
+export function ContactMethodBadge({
+  method,
+  className,
+}: {
+  method: ContactMethod
+  className?: string
+}) {
+  const Icon = method === 'whatsapp' ? MessageCircle : method === 'quick_call' ? PhoneCall : Clock
+  return (
+    <Badge tone={CONTACT_METHOD_TONE[method]} className={clsx('gap-1', className)}>
+      <Icon className="h-3 w-3 shrink-0" aria-hidden />
+      Pidió {CONTACT_METHOD_LABEL[method].toLowerCase()}
+    </Badge>
   )
 }

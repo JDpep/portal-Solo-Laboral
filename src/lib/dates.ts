@@ -129,6 +129,63 @@ export function formatDateChip(value: PlainDate): string {
   return `${weekdayName} ${dayMonth}`
 }
 
+/**
+ * Fecha civil + hora del despacho -> instante real (ISO UTC).
+ *
+ * Hace falta porque las dos mitades del sistema hablan idiomas distintos: la
+ * persona elige "el jueves a las 16:20" —que no es un instante hasta que se le
+ * pega una zona— y el calendario guarda `timestamptz`, que sí lo es. Componer
+ * la cadena a mano y pasarla por `new Date()` la interpretaría en la zona del
+ * SERVIDOR, y una audiencia agendada desde un servidor en Virginia saldría dos
+ * horas corrida en la agenda del abogado.
+ *
+ * Se resuelve preguntándole a Intl cuánto vale el desfase de la zona EN ESE
+ * instante, no hoy: así un horario de verano —que México ya no aplica, pero la
+ * función no tiene por qué saberlo— no descuadra nada.
+ */
+export function instantFrom(
+  date: PlainDate,
+  time: string,
+  timeZone = FIRM_TIME_ZONE,
+): string {
+  const [year, month, day] = date.split('-').map(Number)
+  const [hour, minute] = time.split(':').map(Number)
+  const naive = Date.UTC(year, month - 1, day, hour, minute)
+
+  // Dos pasadas: la primera aproxima el desfase con el instante ingenuo; la
+  // segunda lo corrige si esa aproximación cayó al otro lado de un cambio de
+  // horario. Con dos basta para cualquier zona real.
+  let instant = naive - zoneOffsetMs(new Date(naive), timeZone)
+  instant = naive - zoneOffsetMs(new Date(instant), timeZone)
+  return new Date(instant).toISOString()
+}
+
+/** Cuánto adelanta (o atrasa) la zona respecto de UTC en ese instante. */
+function zoneOffsetMs(instant: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(instant)
+
+  const read = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? '0')
+  const asUtc = Date.UTC(
+    read('year'),
+    read('month') - 1,
+    read('day'),
+    // Algunas versiones de ICU formatean la medianoche como "24".
+    read('hour') % 24,
+    read('minute'),
+    read('second'),
+  )
+  return asUtc - instant.getTime()
+}
+
 /** Instante real, para sellos de envío y sesiones. */
 export function nowIso(): string {
   return new Date().toISOString()

@@ -2,12 +2,21 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, CalendarClock, MessageCircle, Phone } from 'lucide-react'
 import { requireStaff } from '@/lib/auth/guard'
-import { findQualifiedLeadById } from '@/lib/db/leads'
+import { findLeadForStaff } from '@/lib/db/leads'
+import { findCaseByLeadId } from '@/lib/db/cases'
+import { listActiveUsers } from '@/lib/db/users'
+import { ConvertLead } from '@/components/portal/ConvertLead'
+import {
+  CONTACT_METHOD_LABEL,
+  LEAD_SOURCE_LABEL,
+  LEAD_STATUS_LABEL,
+  LEAD_STATUS_TONE,
+} from '@/lib/domain/labels'
 import { formatDate, formatDateLong, formatDateTime } from '@/lib/dates'
 import { formatPhone, telHref, whatsappHref } from '@/lib/domain/phone'
 import { stateLabel } from '@/lib/domain/states'
 import { formatCallTime } from '@/lib/domain/call-time'
-import { DaysBadge, DemoBadge } from '@/components/ui/Badge'
+import { Badge, DaysBadge, DemoBadge } from '@/components/ui/Badge'
 import { DemoNotice } from '@/components/ui/States'
 
 export const dynamic = 'force-dynamic'
@@ -16,7 +25,7 @@ export const dynamic = 'force-dynamic'
  * DETALLE DEL CASO. Todo lo que la persona escribió, para que el abogado
  * entienda el contexto antes de marcar el teléfono.
  *
- * `findQualifiedLeadById` devuelve null también cuando el registro existe pero
+ * `findLeadForStaff` devuelve null también cuando el registro existe pero
  * NO calificó: adivinar un id no puede convertirse en una forma de leer las
  * solicitudes que el filtro dejó fuera.
  *
@@ -28,8 +37,14 @@ export const dynamic = 'force-dynamic'
 export default async function CaseDetailPage({ params }: { params: { id: string } }) {
   await requireStaff()
 
-  const lead = await findQualifiedLeadById(params.id)
+  const lead = await findLeadForStaff(params.id)
   if (!lead) notFound()
+
+  // Si ya se convirtió, esta ficha deja de ofrecer convertir y pasa a ser la
+  // puerta al caso: dos casos para la misma persona es justo lo que el
+  // UNIQUE de la base impide, y la pantalla no debería ni sugerirlo.
+  const existingCase = lead.caseId ? await findCaseByLeadId(lead.id) : null
+  const users = existingCase ? [] : await listActiveUsers()
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -60,8 +75,9 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
         <div className="border-b border-sl-border bg-sl-primary-soft/50 px-5 py-5 sm:px-7">
           <div className="flex items-center gap-2">
             <span className="font-mono text-sm font-semibold text-sl-primary">
-              {lead.caseNumber}
+              {lead.folio}
             </span>
+            <Badge tone={LEAD_STATUS_TONE[lead.status]}>{LEAD_STATUS_LABEL[lead.status]}</Badge>
             {lead.isDemo ? <DemoBadge /> : null}
           </div>
           <h1 className="mt-1 text-2xl font-semibold text-sl-text">{lead.fullName}</h1>
@@ -151,8 +167,88 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
           )}
         </div>
 
+        {/*
+          CÓMO PIDIÓ QUE LE HABLARAN.
+          Va antes de la conversión porque es lo que decide qué hace el abogado
+          en los próximos cinco minutos: escribirle, esperar a la hora que pidió
+          o marcarle ya.
+        */}
+        {lead.preferredContactMethod ? (
+          <div className="border-b border-sl-border px-5 py-5 sm:px-7">
+            <h2 className="sl-eyebrow">Cómo prefiere que lo contacten</h2>
+            <p className="mt-2 text-[15px] text-sl-text">
+              Eligió{' '}
+              <strong className="font-semibold">
+                {CONTACT_METHOD_LABEL[lead.preferredContactMethod].toLowerCase()}
+              </strong>
+              .
+            </p>
+
+            {lead.whatsappOpenedAt ? (
+              <p className="mt-1.5 text-sm text-sl-muted">
+                Abrió WhatsApp con su mensaje preparado el {formatDateTime(lead.whatsappOpenedAt)}.{' '}
+                {/*
+                  Se dice explícitamente, y no es un matiz: con un enlace wa.me
+                  el sistema deja de ver a la persona en cuanto salta a la
+                  aplicación. Si el abogado creyera que hay un mensaje esperando
+                  y no lo hay, dejaría de llamar a alguien que sí lo necesita.
+                */}
+                <span className="text-sl-text">
+                  Eso no confirma que llegara a enviarlo: revisa el WhatsApp del despacho.
+                </span>
+              </p>
+            ) : null}
+
+            {lead.scheduledCallAt ? (
+              <p className="mt-1.5 text-sm text-sl-muted">
+                Pidió que le llamaran enseguida. Previsto para las{' '}
+                {formatDateTime(lead.scheduledCallAt)}.
+              </p>
+            ) : null}
+
+            {lead.contactedAt ? (
+              <p className="mt-1.5 text-sm text-sl-success">
+                Contactado el {formatDateTime(lead.contactedAt)}.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/*
+          CONVERTIR EN CASO. Es la frontera del sistema: hasta aquí es una
+          persona que escribió; a partir de aquí es un asunto que el despacho
+          lleva, con su ruta y su seguimiento. Por eso no ocurre solo — lo
+          decide una persona, y esta es la única puerta.
+        */}
+        <div className="border-b border-sl-border bg-sl-background px-5 py-5 sm:px-7">
+          {existingCase ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="sl-eyebrow">Ya es un caso</h2>
+                <p className="mt-1 text-sm text-sl-text">
+                  Se convirtió el {formatDateTime(lead.convertedToCaseAt)}. El seguimiento vive
+                  ahí; esta ficha conserva cómo llegó.
+                </p>
+              </div>
+              <Link href={`/portal/seguimiento/${existingCase.id}`} className="sl-btn-primary">
+                Ver seguimiento
+              </Link>
+            </div>
+          ) : (
+            <>
+              <h2 className="sl-eyebrow">¿El despacho toma este caso?</h2>
+              <p className="mb-3 mt-1 text-sm text-sl-muted">
+                Al convertirlo se crea su ruta y nada se vuelve a capturar: el nombre, el contacto,
+                el estado y la fecha de despido los hereda el caso.
+              </p>
+              <ConvertLead leadId={lead.id} users={users} />
+            </>
+          )}
+        </div>
+
         <dl className="divide-y divide-sl-border">
           <Row label="Estado">{stateLabel(lead.state)}</Row>
+          <Row label="Cómo llegó">{LEAD_SOURCE_LABEL[lead.source]}</Row>
           <Row label="Fecha de despido">{formatDate(lead.dismissalDate)}</Row>
           <Row label="Días desde el despido">
             <span className="flex flex-wrap items-center gap-2">

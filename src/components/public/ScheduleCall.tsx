@@ -14,7 +14,16 @@ import {
 import { formatDateChip, formatDateLong } from '@/lib/dates'
 
 /**
- * ELEGIR CUÁNDO LLAMAR. Solo aparece si el caso pasó el filtro.
+ * ELEGIR CUÁNDO LLAMAR.
+ *
+ * FUERA DEL FLUJO PÚBLICO desde el 2026-08-28, por decisión del despacho: la
+ * pantalla de continuación quedó con dos caminos —WhatsApp y "que me llamen"—
+ * y esta tercera opción se retiró. El componente y su acción de servidor se
+ * conservan intactos porque el despacho puede querer recuperarla, el portal
+ * sigue mostrando la hora pedida cuando existe, y las pruebas de la cookie
+ * firmada siguen cubriéndola.
+ *
+ * Para volver a ofrecerla, se renderiza desde `ContactOptions`.
  *
  * Se pide día y HORA EXACTA, de 9:30 a 17:30 cada diez minutos. Sigue siendo
  * una preferencia y no una reserva —el sistema no conoce la agenda de los

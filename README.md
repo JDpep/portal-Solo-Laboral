@@ -12,12 +12,23 @@ PERSONA → FORMULARIO PÚBLICO → MOTOR DE CALIFICACIÓN → ¿CALIFICA?
                                         │                            │
                                  folio SL-000001              se le dice cuál
                                         │                    condición falló
-                                 elige cuándo                 (se guarda, no
-                                 le llamamos                   se muestra)
+                          ┌─────────────┼─────────────┐      (se guarda, no
+                          │             │             │       se muestra)
+                     WhatsApp      agendar      "que me
+                    con contexto   llamada     llamen ya"
+                          └─────────────┼─────────────┘
                                         │
                                  visible en /portal
                                         │
-                                el abogado llama
+                                 el abogado llama
+                                        │
+                              CONVERTIR EN CASO (un clic)
+                                        │
+                              ruta del caso · seguimiento
+                                        │
+                                     cierre
+                                        │
+                                    histórico
 ```
 
 **NO TODOS LOS FORMULARIOS LLEGAN AL PORTAL.** Ese es el punto del producto.
@@ -53,8 +64,19 @@ Sin IA. Regla determinística, del lado del servidor, en
 |---|---|---|
 | `/` | Página pública y formulario | Abierto, indexable |
 | `/acceso` | Inicio de sesión del despacho | Abierto, `noindex` |
-| `/portal` | Casos por contactar | Requiere sesión |
-| `/portal/[id]` | Detalle del caso | Requiere sesión |
+| `/portal` | Leads: gente por revisar | Requiere sesión |
+| `/portal/[id]` | Ficha del lead · convertir en caso | Requiere sesión |
+| `/portal/seguimiento` | Casos abiertos y su avance | Requiere sesión |
+| `/portal/seguimiento/[id]` | Ruta del caso, paso a paso | Requiere sesión |
+| `/portal/calendario` | Agenda operativa | Requiere sesión · en construcción |
+| `/portal/historico` | Casos cerrados y métricas | Requiere sesión · en construcción |
+| `/portal/administracion` | Cuentas y plantillas | Requiere rol `admin` · en construcción |
+
+**LEAD y CASO son cosas distintas.** Un lead es alguien que escribió y está
+siendo revisado; un caso es un asunto que el despacho decidió llevar. La
+conversión la pulsa una persona —nada la dispara solo— y a partir de ahí el
+caso hereda el folio, los datos y las llamadas ya agendadas, sin recapturar
+nada.
 
 ---
 
@@ -62,43 +84,72 @@ Sin IA. Regla determinística, del lado del servidor, en
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000
+cp .env.example .env.local     # y rellena la conexión a Postgres
+npm run db:migrate             # crea el esquema
+npm run db:seed -- --demo      # cuentas de demostración + ejemplos
+npm run dev                    # http://localhost:3000
 ```
 
-Acceso DEMO al portal (visible en `/acceso` mientras dure la Fase 1):
+`db:seed` deja dos cuentas de **demostración** —`Admin@SL.mx` (rol `admin`) y
+`User@SL.mx` (rol `lawyer`)— con la contraseña que pongas en
+`SEED_DEMO_PASSWORD` dentro de `.env.local`. **La contraseña no se escribe en el
+repositorio**: este repo es público y esas cuentas entran al portal real, donde
+hay datos personales de prospectos.
 
-```
-abogados@sololaboral.demo · SoloLaboral2026
-```
+La pantalla de acceso tampoco las muestra: hay que saberlas. Antes de operar con
+clientes reales, dar de baja estas dos y crear las del despacho con contraseñas
+propias.
 
 ### Verificación
 
 ```bash
 npm run typecheck    # tsc --noEmit
 npm run lint
-npm test             # 61 pruebas
+npm test             # 59 pruebas puras: motor, fechas, mensajes, validación
+npm run test:db      # 52 de integración contra Postgres real (esquema `test`)
 npm run build
 ```
+
+Las de integración corren sobre una **réplica completa del esquema** en la
+misma base: mismas tablas, mismos triggers, mismas restricciones. Comprueban lo
+que garantiza Postgres —el folio único, el caso irrepetible, la bitácora que no
+se deja reescribir— sin poder rozar un dato del despacho.
 
 ### Variables de entorno
 
 ```
-SESSION_SECRET=...   # obligatorio en producción; el portal no arranca sin él
+SESSION_SECRET=...              # obligatorio en producción; el portal no arranca sin él
+POSTGRES_URL=...                # pooler (6543): la conexión de la aplicación
+POSTGRES_URL_NON_POOLING=...    # sesión (5432): migraciones y scripts
+
+SOLO_LABORAL_WHATSAPP_NUMBER=   # 52 + 10 dígitos. SIN ESTO la opción de
+                                # WhatsApp no se ofrece — nunca un botón roto
+WHATSAPP_MESSAGE_TEMPLATE=      # opcional; por defecto, la plantilla neutra
+QUICK_CALL_MIN_DELAY=10         # ventana de la llamada próxima, en minutos
+QUICK_CALL_MAX_DELAY=15
 ```
 
 ---
 
 ## Estado
 
-**Fase 1 terminada**: el flujo completo funciona, con almacén **en memoria**.
-Los envíos se pierden al reiniciar el proceso.
+**En Postgres, en producción.** El almacén en memoria de la Fase 1 desapareció:
+los datos viven en Supabase y las nueve tablas llevan RLS activo sin ninguna
+política, así que el navegador no puede leer nada — la única puerta es el
+servidor.
 
-**Fase 2**: sustituir el cuerpo de `src/lib/db/*.ts` por consultas SQL. El
-esquema ya está escrito en [`docs/ESQUEMA_BASE_DATOS.md`](docs/ESQUEMA_BASE_DATOS.md);
-ni las páginas ni las acciones cambian.
+**Funciona hoy:** formulario público con su filtro, tres vías de contacto
+después de calificar, leads, conversión a caso, ruta del caso, cierre con
+motivo e historia de estados. Todo con bitácora.
 
-**Antes de producción**, ver [`docs/DECISIONES_PENDIENTES.md`](docs/DECISIONES_PENDIENTES.md).
-El punto 1 —el aviso de privacidad del despacho— es bloqueante.
+**Falta:** calendario, histórico con métricas, alta manual de leads y la
+pantalla de administración. Sus datos ya se están guardando.
+
+**Antes de publicitar el formulario**, ver
+[`docs/DECISIONES_PENDIENTES.md`](docs/DECISIONES_PENDIENTES.md). Dos puntos
+bloquean: el **1**, el aviso de privacidad del despacho; y el **3**, que nadie
+se entera al instante de que entró un caso — y ahora se promete una llamada en
+diez minutos.
 
 ---
 
@@ -111,10 +162,17 @@ El punto 1 —el aviso de privacidad del despacho— es bloqueante.
 | [`docs/ESQUEMA_BASE_DATOS.md`](docs/ESQUEMA_BASE_DATOS.md) | SQL de la Fase 2 |
 | [`docs/DECISIONES_PENDIENTES.md`](docs/DECISIONES_PENDIENTES.md) | Lo que falta del cliente y con qué supuesto se construyó |
 | [`docs/BRAND.md`](docs/BRAND.md) | Identidad oficial: colores, tipografía, logotipo |
+| `db/migrations/` | El esquema real. Fuente de verdad, aplicado con `npm run db:migrate` |
 
 ---
 
 ## Historia
+
+El 2026-08-27 el portal pasó de almacén en memoria a Postgres y creció con
+Casos, Ruta del Caso, calendario y bitácora; el 2026-08-28 se añadieron las
+tres vías de contacto tras calificar. El módulo de Leads se conservó tal cual:
+lo único que cambió en él fue el nombre del campo `caseNumber` → `folio` —un
+lead no es un caso— y el bloque nuevo para convertirlo.
 
 Este repositorio contuvo antes un portal interno más amplio (Empresas,
 Propuestas, calculadora de finiquito, Dashboard, Bitácora, Usuarios). El

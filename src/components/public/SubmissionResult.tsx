@@ -1,5 +1,5 @@
 import { CircleCheck, Info } from 'lucide-react'
-import { ScheduleCall } from '@/components/public/ScheduleCall'
+import { ContactOptions } from '@/components/public/ContactOptions'
 import type { LeadSubmissionState, UnqualifiedReason } from '@/lib/domain/lead-submission'
 
 /**
@@ -20,17 +20,15 @@ import type { LeadSubmissionState, UnqualifiedReason } from '@/lib/domain/lead-s
  *    lo que le permite buscar ayuda en el lugar correcto. El costo conocido es
  *    que también le enseña qué contestar para pasar el filtro.
  *
- * Lo único que cambió aquí es la jerarquía: el folio pasó a ser el objeto
- * central de la pantalla, porque es lo que hay que guardar y en el teléfono
- * se lee (o se captura de pantalla) antes que cualquier párrafo.
+ * El folio es el objeto central de la pantalla: es lo que hay que guardar, lo
+ * que en el teléfono se lee (o se captura) antes que cualquier párrafo, y lo
+ * que después convierte un WhatsApp suelto en un caso con historia — el
+ * abogado lo teclea en el portal y tiene delante todo lo que la persona
+ * contestó.
+ *
+ * Debajo del folio, las tres formas de continuar. Ver `ContactOptions`.
  */
-export function SubmissionResult({
-  state,
-  todayDate,
-}: {
-  state: LeadSubmissionState
-  todayDate: string
-}) {
+export function SubmissionResult({ state }: { state: LeadSubmissionState }) {
   if (state.status === 'qualified') {
     return (
       <div className="text-center">
@@ -39,21 +37,20 @@ export function SubmissionResult({
         </span>
 
         <h2 className="mt-4 text-xl font-semibold text-sl-text sm:text-2xl">
-          Gracias por compartir tu información.
+          Tu información cumple con nuestros criterios iniciales
         </h2>
 
         <div className="mx-auto mt-3 max-w-sm space-y-3 text-sm leading-relaxed text-sl-text sm:text-base">
-          <p>Tu caso cumple con los criterios iniciales de revisión.</p>
+          <p>Gracias por compartir tu situación.</p>
           <p>
-            Un abogado de Solo Laboral se pondrá en contacto contigo para conocer más sobre tu
-            situación.
+            Un abogado de Solo Laboral podrá revisar la información que nos proporcionaste.
           </p>
         </div>
 
         <dl className="mt-7 rounded-sl border border-sl-success/25 bg-sl-success/5 px-5 py-5">
           <dt className="sl-eyebrow">Folio de referencia</dt>
           <dd className="mt-1.5 font-mono text-2xl font-semibold tracking-tight text-sl-text sm:text-3xl">
-            {state.caseNumber}
+            {state.folio}
           </dd>
           <dd className="mt-2 text-xs leading-relaxed text-sl-muted">
             Guárdalo o toma una captura de pantalla, por si necesitas mencionarlo cuando te
@@ -62,11 +59,11 @@ export function SubmissionResult({
         </dl>
 
         {/*
-          Elegir hora SOLO se ofrece aquí, en la rama que calificó. En la
-          otra sería cruel: proponerle horario a alguien a quien se le acaba de
-          decir que no se puede atender su caso.
+          Las vías de contacto SOLO se ofrecen aquí, en la rama que calificó.
+          En la otra sería cruel: proponerle horario —o una conversación— a
+          alguien a quien se le acaba de decir que no se puede atender su caso.
         */}
-        <ScheduleCall todayDate={todayDate} />
+        <ContactOptions contact={state.contact} />
       </div>
     )
   }
