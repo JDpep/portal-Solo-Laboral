@@ -1,0 +1,97 @@
+# ============================================================================
+# VERIFICACIÓN AUTOMÁTICA
+#
+# Corre en cada push y en cada pull request. Lo que comprueba es lo mismo que se
+# comprobaba a mano antes de subir; la diferencia es que ahora no depende de que
+# alguien se acuerde.
+#
+# Las pruebas de integración corren contra un Postgres DE VERDAD levantado aquí
+# mismo, no contra la base del despacho: son las que verifican las garantías que
+# viven en la base —el folio único, el caso irrepetible, la bitácora que no se
+# deja reescribir, el trigger que alimenta la agenda— y contra un doble en
+# memoria pasarían sin ejercitar nada. Contra la base real del despacho, en
+# cambio, la truncarían: la suite vacía las tablas entre pruebas.
+# ============================================================================
+name: Verificación
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un push nuevo cancela la verificación del anterior: nadie necesita el
+# resultado de un commit que ya quedó atrás.
+concurrency:
+  group: verificacion-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  estatico:
+    name: Tipos, lint y pruebas puras
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  base-de-datos:
+    name: Pruebas contra Postgres
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        # Sin esto los pasos empiezan antes de que Postgres acepte conexiones.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres
+      POSTGRES_URL_NON_POOLING: postgres://postgres:postgres@localhost:5432/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+
+      # El esquema `test` es una réplica completa: mismas tablas, mismos
+      # triggers, mismas restricciones. Se construye desde cero cada vez, así
+      # que también comprueba que las migraciones corren en orden sobre una
+      # base vacía —que es lo que le pasará a la próxima que se cree.
+      - name: Aplicar migraciones
+        run: npm run db:migrate -- --schema test
+
+      - name: Pruebas de integración
+        run: npm run test:db
+
+  construir:
+    name: Build de producción
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      # `build` y no `vercel-build`: aquí no hay base del despacho que migrar,
+      # y no se quiere que el CI toque producción por ninguna vía.
+      # El build no necesita ninguna variable: todas las páginas del portal son
+      # dinámicas y nada consulta la base al construir. Si algún día hiciera
+      # falta un secreto para construir, este paso fallaría y avisaría.
+      - run: npm run build
