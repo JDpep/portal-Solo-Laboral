@@ -94,12 +94,22 @@ export const CHECKLIST_STATUS_LABEL: Record<ChecklistItemStatus, string> = {
   not_applicable: 'No aplica',
 }
 
+/**
+ * "Sin respuesta" y NO "No respondió".
+ *
+ * La clave de la base sigue siendo `no_response`, pero el rótulo cambió cuando
+ * el estado empezó a ponerse solo: pasados unos días sin novedad, el sistema no
+ * sabe quién se quedó callado. Si nadie marcó ese teléfono, el que no respondió
+ * fue el despacho. "No respondió" señala al prospecto de algo que puede no
+ * haber hecho; "Sin respuesta" describe el hecho —no hay respuesta— y es cierto
+ * en los dos casos.
+ */
 export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
   new: 'Nuevo',
   contacted: 'Contactado',
   converted: 'Convertido en caso',
   discarded: 'Descartado',
-  no_response: 'No respondió',
+  no_response: 'Sin respuesta',
 }
 
 export const LEAD_STATUS_TONE: Record<LeadStatus, Tone> = {

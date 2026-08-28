@@ -73,3 +73,15 @@ function positiveInt(raw: string | undefined, fallback: number): number {
   const value = Number(raw)
   return Number.isInteger(value) && value > 0 && value <= 24 * 60 ? value : fallback
 }
+
+/**
+ * Días sin novedad tras los que un lead pasa a "Sin respuesta".
+ *
+ * Se cuentan desde la llamada que pidió —o desde su registro, si no pidió
+ * ninguna—. Cinco días por omisión: menos castiga un puente largo, y más deja
+ * la lista de Leads llena de gente a la que ya nadie va a marcar.
+ */
+export function noResponseDays(): number {
+  const value = Number(process.env.LEAD_NO_RESPONSE_DAYS)
+  return Number.isInteger(value) && value > 0 && value <= 365 ? value : 5
+}

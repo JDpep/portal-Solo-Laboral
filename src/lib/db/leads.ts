@@ -328,6 +328,67 @@ export async function setLeadStatus(id: string, status: LeadStatus): Promise<Lea
   return rows.length ? rowToLead(rows[0]) : null
 }
 
+export interface StaleLead {
+  id: string
+  folio: string | null
+  fullName: string
+  /** Desde cuándo no hay novedad: su llamada, o su registro si no pidió una. */
+  since: string
+  /** Si alguien del despacho llegó a marcarlo como contactado. */
+  wasContacted: boolean
+}
+
+/**
+ * Leads que llevan días sin novedad y pasan a "Sin respuesta".
+ *
+ * Lo corre el cron diario. La regla: un lead visible que sigue en 'new' o
+ * 'contacted' —ni convertido ni descartado— y cuya llamada pedida (o, si no
+ * pidió ninguna, su registro) quedó atrás hace más de `days` días.
+ *
+ * EL RÓTULO ES "SIN RESPUESTA" Y NO "NO RESPONDIÓ", y la diferencia importa
+ * porque desde aquí no se puede saber quién se quedó callado: si nadie marcó
+ * ese teléfono, el que no respondió fue el despacho. La bitácora sí guarda el
+ * dato que lo distingue —`wasContacted`—, para que un día se pueda medir cuánto
+ * de este silencio es del prospecto y cuánto es cola propia sin atender.
+ *
+ * No se pierde nada: el lead sigue visible en el portal, con su estado, y se
+ * puede devolver a 'contacted' o convertir en caso desde su ficha.
+ */
+export async function markLeadsWithoutResponse(days: number): Promise<StaleLead[]> {
+  const sql = db()
+  const rows = await sql`
+    WITH referencia AS (
+      SELECT
+        l.id,
+        l.folio,
+        l.full_name,
+        l.status,
+        -- La llamada que pidió, si pidió alguna; si no, desde que se registró.
+        COALESCE(
+          (SELECT max(e.start_at) FROM calendar_events e
+            WHERE e.lead_id = l.id AND e.event_type = 'call'),
+          l.submitted_at
+        ) AS desde
+      FROM leads l
+      WHERE l.visible_to_staff
+        AND l.status IN ('new', 'contacted')
+        AND l.case_id IS NULL
+    )
+    UPDATE leads SET status = 'no_response'
+    FROM referencia r
+    WHERE leads.id = r.id
+      AND r.desde < now() - make_interval(days => ${days})
+    RETURNING leads.id, leads.folio, leads.full_name, r.desde, r.status AS estado_previo
+  `
+  return rows.map((row) => ({
+    id: row.id,
+    folio: row.folio,
+    fullName: row.full_name,
+    since: isoRequired(row.desde),
+    wasContacted: row.estado_previo === 'contacted',
+  }))
+}
+
 /** Notas internas. No las ve nadie fuera del despacho. */
 export async function setLeadNotes(id: string, notes: string): Promise<Lead | null> {
   const sql = db()
