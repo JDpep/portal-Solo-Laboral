@@ -59,6 +59,34 @@ export const CASE_CLOSE_REASON_LABEL: Record<CaseCloseReason, string> = {
   other: 'Otro motivo',
 }
 
+/**
+ * El mismo motivo, en corto.
+ *
+ * La versión larga es una frase —"El cliente decidió no continuar"— y sirve
+ * para leerla en la ficha de un caso, donde hay renglón entero. En una columna
+ * de tabla o en una pastilla de filtro no cabe, y recortarla con puntos
+ * suspensivos deja al lector adivinando cuál de los dos motivos de cliente era.
+ */
+export const CASE_CLOSE_REASON_SHORT: Record<CaseCloseReason, string> = {
+  completed: 'Concluido',
+  client_declined: 'No continuó',
+  client_unresponsive: 'Sin respuesta',
+  not_viable: 'No procedió',
+  other: 'Otro',
+}
+
+/**
+ * El tono NO califica al despacho: que un cliente deje de responder no es un
+ * error de nadie. Solo separa el cierre que llegó a término del que no.
+ */
+export const CASE_CLOSE_REASON_TONE: Record<CaseCloseReason, Tone> = {
+  completed: 'success',
+  client_declined: 'neutral',
+  client_unresponsive: 'warning',
+  not_viable: 'info',
+  other: 'neutral',
+}
+
 export const CHECKLIST_STATUS_LABEL: Record<ChecklistItemStatus, string> = {
   pending: 'Pendiente',
   in_progress: 'En proceso',

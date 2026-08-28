@@ -83,11 +83,12 @@ export async function convertLeadToCase(
 
 // ──────────────────────────────────────────────────────────────── seguimiento
 
-export type CaseSortKey = 'folio' | 'openedAt' | 'clientName' | 'status'
+export type CaseSortKey = 'folio' | 'openedAt' | 'closedAt' | 'clientName' | 'status'
 
 const SORT_COLUMN: Record<CaseSortKey, string> = {
   folio: 'folio',
   openedAt: 'opened_at',
+  closedAt: 'closed_at',
   clientName: 'client_name',
   status: 'status',
 }
@@ -99,6 +100,8 @@ export interface ListCasesOptions {
   query?: string
   status?: CaseStatus
   assignedUserId?: string
+  /** Por qué terminó. Solo tiene sentido dentro del histórico. */
+  closeReason?: CaseCloseReason
   /** 'open' = en seguimiento; 'closed' = histórico; 'all' = todo. */
   scope?: 'open' | 'closed' | 'all'
   sort?: CaseSortKey
@@ -116,31 +119,31 @@ export interface CasePage {
 }
 
 /**
- * Una sola consulta para toda la fila de Seguimiento: caso, cliente,
- * responsable, progreso y próximo evento.
+ * El filtro, en un solo sitio.
  *
- * El progreso y el próximo evento se CALCULAN aquí, en subconsultas, en vez de
- * guardarse en columnas que haya que mantener sincronizadas. Un contador
- * guardado se desincroniza el día que alguien inserta un paso por otra puerta;
- * un `count(*)` no puede mentir.
+ * Lo usan la lista Y los indicadores del histórico. Escrito dos veces, el día
+ * que alguien añadiera una condición a uno de los dos, la pantalla mostraría
+ * "14 casos concluidos" encima de una tabla con doce — y no habría forma de
+ * saber cuál de los dos números es el bueno.
+ *
+ * Espera que la consulta traiga `cases c` y `leads l`.
  */
-export async function listCases(options: ListCasesOptions = {}): Promise<CasePage> {
-  const sql = db()
+function caseFilter(sql: ReturnType<typeof db>, options: ListCasesOptions) {
   const needle = options.query?.trim() ?? ''
   const like = `%${needle}%`
   const digits = needle.replace(/\D/g, '')
   const scope = options.scope ?? 'open'
 
-  const sort = SORT_COLUMN[options.sort ?? 'openedAt'] ?? 'opened_at'
-  const direction = options.direction === 'asc' ? 'asc' : 'desc'
-  const pageSize = Math.min(100, Math.max(5, options.pageSize ?? 25))
-  const page = Math.max(1, options.page ?? 1)
-
-  const where = sql`
+  return sql`
     TRUE
     ${scope === 'open' ? sql`AND c.status = ANY(${OPEN_STATUSES}::case_status[])` : sql``}
     ${scope === 'closed' ? sql`AND NOT (c.status = ANY(${OPEN_STATUSES}::case_status[]))` : sql``}
     ${options.status ? sql`AND c.status = ${options.status}::case_status` : sql``}
+    ${
+      options.closeReason
+        ? sql`AND c.closed_reason = ${options.closeReason}::case_close_reason`
+        : sql``
+    }
     ${
       options.assignedUserId && isUuid(options.assignedUserId)
         ? sql`AND c.assigned_user_id = ${options.assignedUserId}::uuid`
@@ -156,6 +159,25 @@ export async function listCases(options: ListCasesOptions = {}): Promise<CasePag
         : sql``
     }
   `
+}
+
+/**
+ * Una sola consulta para toda la fila de Seguimiento: caso, cliente,
+ * responsable, progreso y próximo evento.
+ *
+ * El progreso y el próximo evento se CALCULAN aquí, en subconsultas, en vez de
+ * guardarse en columnas que haya que mantener sincronizadas. Un contador
+ * guardado se desincroniza el día que alguien inserta un paso por otra puerta;
+ * un `count(*)` no puede mentir.
+ */
+export async function listCases(options: ListCasesOptions = {}): Promise<CasePage> {
+  const sql = db()
+  const sort = SORT_COLUMN[options.sort ?? 'openedAt'] ?? 'opened_at'
+  const direction = options.direction === 'asc' ? 'asc' : 'desc'
+  const pageSize = Math.min(100, Math.max(5, options.pageSize ?? 25))
+  const page = Math.max(1, options.page ?? 1)
+
+  const where = caseFilter(sql, options)
 
   const counted = await sql`
     SELECT count(*)::int AS total FROM cases c JOIN leads l ON l.id = c.lead_id WHERE ${where}
@@ -224,6 +246,100 @@ export async function listCases(options: ListCasesOptions = {}): Promise<CasePag
     page: current,
     pageSize,
     pageCount,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────── histórico
+
+export interface ClosedCaseMetrics {
+  total: number
+  /** Cuántos por cada motivo de cierre. Los motivos sin casos valen 0. */
+  byReason: Record<CaseCloseReason, number>
+  /**
+   * Días entre abrir y cerrar. MEDIANA, no promedio: un solo caso que estuvo
+   * abierto dos años arrastra la media y hace creer que el despacho tarda el
+   * triple de lo que tarda. Null cuando no hay casos que medir.
+   */
+  medianDays: number | null
+  shortestDays: number | null
+  longestDays: number | null
+  /** Pasos completados sobre pasos que contaban, en todos los casos cerrados. */
+  stepsDone: number
+  stepsTotal: number
+}
+
+const CLOSE_REASONS: CaseCloseReason[] = [
+  'completed',
+  'client_declined',
+  'client_unresponsive',
+  'not_viable',
+  'other',
+]
+
+/**
+ * Los indicadores del histórico, sobre EXACTAMENTE el mismo filtro que la
+ * lista que se ve debajo.
+ *
+ * Si los números salieran de todo el histórico mientras la tabla muestra un
+ * filtro, la pantalla diría dos cosas distintas a la vez y ninguna sería
+ * comprobable. Filtrar por "no procedió" tiene que responder "cuántos no
+ * procedieron y cuánto tardaron", no "cuántos hay en total".
+ */
+export async function closedCaseMetrics(
+  options: ListCasesOptions = {},
+): Promise<ClosedCaseMetrics> {
+  const sql = db()
+  const where = caseFilter(sql, { ...options, scope: 'closed' })
+
+  const rows = await sql`
+    SELECT
+      count(*)::int AS total,
+      -- Días civiles entre apertura y cierre. Un caso sin fecha de cierre no
+      -- existe en este ámbito, pero el filtro lo deja fuera igual.
+      percentile_cont(0.5) WITHIN GROUP (
+        ORDER BY EXTRACT(EPOCH FROM (c.closed_at - c.opened_at)) / 86400.0
+      ) AS median_days,
+      min(EXTRACT(EPOCH FROM (c.closed_at - c.opened_at)) / 86400.0) AS min_days,
+      max(EXTRACT(EPOCH FROM (c.closed_at - c.opened_at)) / 86400.0) AS max_days
+    FROM cases c
+    JOIN leads l ON l.id = c.lead_id
+    WHERE ${where} AND c.closed_at IS NOT NULL
+  `
+
+  const reasons = await sql`
+    SELECT c.closed_reason::text AS reason, count(*)::int AS total
+    FROM cases c
+    JOIN leads l ON l.id = c.lead_id
+    WHERE ${where} AND c.closed_reason IS NOT NULL
+    GROUP BY c.closed_reason
+  `
+
+  const steps = await sql`
+    SELECT
+      count(*) FILTER (WHERE i.status = 'completed')::int AS done,
+      count(*) FILTER (WHERE i.status <> 'not_applicable')::int AS total
+    FROM case_checklist_items i
+    WHERE i.case_id IN (
+      SELECT c.id FROM cases c JOIN leads l ON l.id = c.lead_id WHERE ${where}
+    )
+  `
+
+  const byReason = Object.fromEntries(
+    CLOSE_REASONS.map((reason) => [reason, 0]),
+  ) as Record<CaseCloseReason, number>
+  for (const row of reasons) byReason[row.reason as CaseCloseReason] = row.total
+
+  const round = (value: unknown): number | null =>
+    value === null || value === undefined ? null : Math.round(Number(value))
+
+  return {
+    total: rows[0].total,
+    byReason,
+    medianDays: round(rows[0].median_days),
+    shortestDays: round(rows[0].min_days),
+    longestDays: round(rows[0].max_days),
+    stepsDone: steps[0].done,
+    stepsTotal: steps[0].total,
   }
 }
 
