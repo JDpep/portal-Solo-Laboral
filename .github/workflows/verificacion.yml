@@ -73,6 +73,16 @@ jobs:
       # triggers, mismas restricciones. Se construye desde cero cada vez, así
       # que también comprueba que las migraciones corren en orden sobre una
       # base vacía —que es lo que le pasará a la próxima que se cree.
+      # Supabase trae de fábrica los roles `anon` y `authenticated`, y el
+      # esquema les REVOCA todo: es la mitad de la garantía de que el navegador
+      # no puede leer un expediente. Un Postgres pelado no los tiene, así que se
+      # crean aquí para que la migración corra tal cual, sin una versión
+      # especial "para pruebas" que dejaría ese REVOKE sin comprobar nunca.
+      - name: Crear los roles que aporta Supabase
+        run: |
+          psql "$POSTGRES_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN;"
+          psql "$POSTGRES_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE authenticated NOLOGIN;"
+
       - name: Aplicar migraciones
         run: npm run db:migrate -- --schema test
 

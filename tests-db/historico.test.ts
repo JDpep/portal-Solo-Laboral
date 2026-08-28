@@ -2,10 +2,18 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { crearAbogado, resetDb } from './helpers'
 import { db } from '@/lib/db/sql'
 import { createLead } from '@/lib/db/leads'
-import { closedCaseMetrics, closeCase, convertLeadToCase, listCases, reopenCase } from '@/lib/db/cases'
-import { listChecklist, setChecklistItemStatus } from '@/lib/db/checklist'
+import {
+  closedCaseMetrics,
+  closeCase,
+  convertLeadToCase,
+  listCases,
+  listStatusHistory,
+  reopenCase,
+} from '@/lib/db/cases'
+import { listChecklist, setChecklistItemStatus, updateChecklistItem } from '@/lib/db/checklist'
+import { listEventsForCase } from '@/lib/db/events'
 import { qualifyLead } from '@/lib/domain/qualification'
-import { addDays, today } from '@/lib/dates'
+import { addDays, instantFrom, today } from '@/lib/dates'
 import type { CaseCloseReason } from '@/lib/domain/types'
 
 /**
@@ -197,5 +205,110 @@ describe('indicadores del histórico', () => {
     const m = await closedCaseMetrics()
     expect(m.total).toBe(1)
     expect(m.medianDays).toBe(4)
+  })
+})
+
+describe('terminar la ruta cierra el caso solo', () => {
+  beforeEach(async () => {
+    await resetDb()
+    contador = 0
+  })
+
+  it('completar el último paso manda el caso al histórico', async () => {
+    const { caseId, abogadaId } = await crearCaso('Juan Pérez Villanueva')
+    const pasos = await listChecklist(caseId)
+
+    // Uno a uno: hasta el penúltimo el caso sigue en seguimiento.
+    for (const paso of pasos.slice(0, -1)) {
+      await setChecklistItemStatus(paso.id, 'completed', abogadaId)
+    }
+    expect((await listCases({ scope: 'open' })).total).toBe(1)
+    expect((await listCases({ scope: 'closed' })).total).toBe(0)
+
+    await setChecklistItemStatus(pasos[pasos.length - 1].id, 'completed', abogadaId)
+
+    // El último paso de la plantilla se llama "Cerrar caso": marcarlo YA es la
+    // decisión de cerrar, y pedir además un formulario era pedirla dos veces.
+    expect((await listCases({ scope: 'open' })).total).toBe(0)
+    const cerrados = await listCases({ scope: 'closed' })
+    expect(cerrados.total).toBe(1)
+    expect(cerrados.rows[0].closedReason).toBe('completed')
+    expect(cerrados.rows[0].closedAt).not.toBeNull()
+  })
+
+  it('deja el renglón en el historial y firma quién lo completó', async () => {
+    const { caseId, abogadaId } = await crearCaso('Ana Ruiz')
+    for (const paso of await listChecklist(caseId)) {
+      await setChecklistItemStatus(paso.id, 'completed', abogadaId)
+    }
+
+    const historial = await listStatusHistory(caseId)
+    const cierre = historial[historial.length - 1]
+    expect(cierre.newStatus).toBe('completed')
+    expect(cierre.reason).toBe('Ruta completada')
+    // Sin este renglón el histórico no podría reconstruir cuándo se dejó de
+    // trabajar el asunto.
+    expect(cierre.changedBy).toBe(abogadaId)
+  })
+
+  it('los pasos "no aplica" no impiden el cierre, pero solos no lo provocan', async () => {
+    const { caseId, abogadaId } = await crearCaso('Con pasos que no aplican')
+    const pasos = await listChecklist(caseId)
+
+    // TODOS en "no aplica": no se hizo el trabajo, así que no se cierra como
+    // concluido —diría algo falso en las métricas del histórico.
+    for (const paso of pasos) {
+      await setChecklistItemStatus(paso.id, 'not_applicable', abogadaId)
+    }
+    expect((await listCases({ scope: 'closed' })).total).toBe(0)
+
+    // Con uno solo completado, el resto sin aplicar, sí cierra.
+    await setChecklistItemStatus(pasos[0].id, 'completed', abogadaId)
+    expect((await listCases({ scope: 'closed' })).total).toBe(1)
+  })
+
+  it('no toca un caso ya cerrado por otro motivo', async () => {
+    const { caseId, abogadaId } = await crearCaso('Se dio de baja antes')
+    const pasos = await listChecklist(caseId)
+    await setChecklistItemStatus(pasos[0].id, 'completed', abogadaId)
+    await closeCase(caseId, { reason: 'client_declined' }, abogadaId)
+
+    for (const paso of pasos.slice(1)) {
+      await setChecklistItemStatus(paso.id, 'completed', abogadaId)
+    }
+
+    // El motivo real del cierre no se reescribe porque alguien ordene la ruta
+    // después: en el histórico seguiría contando como "el cliente no continuó".
+    const cerrados = await listCases({ scope: 'closed' })
+    expect(cerrados.rows[0].closedReason).toBe('client_declined')
+  })
+
+  it('reabrir y volver a completar vuelve a cerrarlo', async () => {
+    const { caseId, abogadaId } = await crearCaso('Reabierto')
+    const pasos = await listChecklist(caseId)
+    for (const paso of pasos) await setChecklistItemStatus(paso.id, 'completed', abogadaId)
+    expect((await listCases({ scope: 'closed' })).total).toBe(1)
+
+    await reopenCase(caseId, abogadaId, 'Faltaba una diligencia')
+    expect((await listCases({ scope: 'open' })).total).toBe(1)
+
+    await setChecklistItemStatus(pasos[0].id, 'pending', abogadaId)
+    await setChecklistItemStatus(pasos[0].id, 'completed', abogadaId)
+    expect((await listCases({ scope: 'closed' })).total).toBe(1)
+  })
+
+  it('cancela lo que quedaba agendado por delante', async () => {
+    const { caseId, abogadaId } = await crearCaso('Con audiencia agendada')
+    const pasos = await listChecklist(caseId)
+    await updateChecklistItem(
+      pasos[5].id,
+      { dueAt: instantFrom(addDays(today(), 10), '10:00'), eventType: 'hearing' },
+      abogadaId,
+    )
+    for (const paso of pasos) await setChecklistItemStatus(paso.id, 'completed', abogadaId)
+
+    const eventos = await listEventsForCase(caseId)
+    // Dejarlos vivos llenaría la agenda de citas de asuntos que ya no existen.
+    expect(eventos.every((e) => e.status !== 'scheduled')).toBe(true)
   })
 })
