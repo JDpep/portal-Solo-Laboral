@@ -2,9 +2,17 @@
  * Repositorio de EVENTOS DE CALENDARIO.
  *
  * La agenda operativa del despacho: llamadas, audiencias, conciliaciones y
- * juntas. Aquí solo vive, por ahora, lo que produce el formulario público —la
- * llamada que la persona pidió—; el alta manual y las vistas de calendario
- * entran con su módulo.
+ * juntas.
+ *
+ * NADIE CAPTURA EVENTOS A MANO, y es deliberado. La agenda es un REFLEJO de dos
+ * cosas que ya existen en otro sitio:
+ *
+ *   · lo que pide el prospecto desde la web  -> `upsertWebCallEvent`, aquí
+ *   · la fecha de un paso de la ruta del caso -> un trigger de la base
+ *
+ * Un alta manual aparte convertiría la agenda en una tercera versión de los
+ * mismos hechos, y la tercera versión es siempre la que se queda desactualizada.
+ * Para agendar una audiencia se le pone fecha a su paso en la ruta del caso.
  *
  * IDEMPOTENCIA: la llamada pedida desde la web es UNA por lead, y lo garantiza
  * un índice único parcial de la base. Si la persona cambia de opinión —elige
@@ -14,13 +22,14 @@
  */
 import { db, iso, isoRequired, type Row } from '@/lib/db/sql'
 import { isUuid } from '@/lib/db/leads'
-import type { CalendarEvent, EventType } from '@/lib/domain/types'
+import type { AgendaEvent, CalendarEvent, EventType } from '@/lib/domain/types'
 
 function rowToEvent(row: Row): CalendarEvent {
   return {
     id: row.id,
     leadId: row.lead_id,
     caseId: row.case_id,
+    checklistItemId: row.checklist_item_id ?? null,
     eventType: row.event_type,
     title: row.title,
     description: row.description,
@@ -107,6 +116,113 @@ export async function findNextEventForLead(
       AND event_type = ANY(${types}::event_type[])
     ORDER BY start_at
     LIMIT 1
+  `
+  return rows.length ? rowToEvent(rows[0]) : null
+}
+
+// ──────────────────────────────────────────────────────────────────── agenda
+
+/**
+ * Los eventos de un rango, con el contexto que hace legible cada renglón.
+ *
+ * `from` y `to` son instantes ISO y el rango es semiabierto [from, to): así dos
+ * días consecutivos no se disputan la medianoche y ningún evento sale dos veces.
+ *
+ * Los cancelados NO salen. Una agenda que muestra lo cancelado junto a lo vivo
+ * obliga a leer el estado de cada renglón antes de saber si hay que hacer algo.
+ */
+export async function listAgenda(options: {
+  from: string
+  to: string
+  assignedUserId?: string
+}): Promise<AgendaEvent[]> {
+  const sql = db()
+  const rows = await sql`
+    SELECT
+      e.*,
+      COALESCE(lc.full_name, l.full_name) AS client_name,
+      COALESCE(c.folio, l.folio)          AS folio,
+      COALESCE(lc.phone, l.phone)         AS phone,
+      COALESCE(lc.is_demo, l.is_demo, false) AS is_demo,
+      u.name                              AS assigned_user_name
+    FROM calendar_events e
+    LEFT JOIN leads l        ON l.id = e.lead_id
+    LEFT JOIN cases c        ON c.id = e.case_id
+    LEFT JOIN leads lc       ON lc.id = c.lead_id
+    LEFT JOIN staff_users u  ON u.id = e.assigned_user_id
+    WHERE e.status <> 'cancelled'
+      AND e.start_at >= ${options.from}::timestamptz
+      AND e.start_at <  ${options.to}::timestamptz
+      ${
+        options.assignedUserId && isUuid(options.assignedUserId)
+          ? sql`AND e.assigned_user_id = ${options.assignedUserId}::uuid`
+          : sql``
+      }
+    ORDER BY e.start_at, e.created_at
+  `
+  return rows.map(rowToAgendaEvent)
+}
+
+/**
+ * Lo que ya pasó y sigue marcado como agendado: llamadas que nadie devolvió,
+ * audiencias sin resultado.
+ *
+ * Va aparte y arriba de la agenda a propósito. Un pendiente atrasado no aparece
+ * en "esta semana" —su fecha quedó atrás— y sin este bloque desaparecería de la
+ * pantalla justo cuando más urge.
+ */
+export async function listOverdue(before: string, limit = 50): Promise<AgendaEvent[]> {
+  const rows = await db()`
+    SELECT
+      e.*,
+      COALESCE(lc.full_name, l.full_name) AS client_name,
+      COALESCE(c.folio, l.folio)          AS folio,
+      COALESCE(lc.phone, l.phone)         AS phone,
+      COALESCE(lc.is_demo, l.is_demo, false) AS is_demo,
+      u.name                              AS assigned_user_name
+    FROM calendar_events e
+    LEFT JOIN leads l       ON l.id = e.lead_id
+    LEFT JOIN cases c       ON c.id = e.case_id
+    LEFT JOIN leads lc      ON lc.id = c.lead_id
+    LEFT JOIN staff_users u ON u.id = e.assigned_user_id
+    WHERE e.status = 'scheduled' AND e.start_at < ${before}::timestamptz
+    ORDER BY e.start_at DESC
+    LIMIT ${limit}
+  `
+  return rows.map(rowToAgendaEvent)
+}
+
+function rowToAgendaEvent(row: Row): AgendaEvent {
+  return {
+    ...rowToEvent(row),
+    clientName: row.client_name ?? null,
+    folio: row.folio ?? null,
+    phone: row.phone ? String(row.phone).trim() : null,
+    assignedUserName: row.assigned_user_name ?? null,
+    isDemo: Boolean(row.is_demo),
+  }
+}
+
+/**
+ * Marcar un evento como realizado, o devolverlo a agendado.
+ *
+ * Solo alcanza a los eventos que NO vienen de un paso de la ruta: los que sí
+ * vienen se cierran completando su paso, y dejar que se cierren por los dos
+ * lados haría que la agenda y la ruta pudieran contar cosas distintas del mismo
+ * hecho. La consulta lo impone; no es una regla escrita solo en la pantalla.
+ */
+export async function setEventDone(
+  eventId: string,
+  done: boolean,
+): Promise<CalendarEvent | null> {
+  if (!isUuid(eventId)) return null
+  const rows = await db()`
+    UPDATE calendar_events
+       SET status = ${done ? 'done' : 'scheduled'}::event_status
+     WHERE id = ${eventId}::uuid
+       AND checklist_item_id IS NULL
+       AND status <> 'cancelled'
+    RETURNING *
   `
   return rows.length ? rowToEvent(rows[0]) : null
 }

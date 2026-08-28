@@ -17,6 +17,7 @@ import type {
   ChecklistItem,
   ChecklistItemStatus,
   ChecklistTemplate,
+  EventType,
 } from '@/lib/domain/types'
 
 function rowToItem(row: Row): ChecklistItem {
@@ -33,6 +34,8 @@ function rowToItem(row: Row): ChecklistItem {
     completedAt: iso(row.completed_at),
     completedBy: row.completed_by,
     notes: row.notes,
+    dueAt: iso(row.due_at),
+    eventType: row.event_type,
     createdAt: isoRequired(row.created_at),
     updatedAt: isoRequired(row.updated_at),
   }
@@ -44,6 +47,34 @@ export async function listChecklist(caseId: string): Promise<ChecklistItem[]> {
     SELECT * FROM case_checklist_items WHERE case_id = ${caseId}::uuid ORDER BY position
   `
   return rows.map(rowToItem)
+}
+
+/**
+ * Los pasos de VARIOS casos a la vez, agrupados por caso.
+ *
+ * Es lo que permite que Seguimiento pinte una cuadrícula sin hacer una consulta
+ * por fila: veinticinco casos en pantalla serían veinticinco viajes a la base,
+ * y en serverless cada viaje se paga entero.
+ */
+export async function listStepsForCases(
+  caseIds: string[],
+): Promise<Map<string, ChecklistItem[]>> {
+  const ids = caseIds.filter(isUuid)
+  const grouped = new Map<string, ChecklistItem[]>()
+  if (!ids.length) return grouped
+
+  const rows = await db()`
+    SELECT * FROM case_checklist_items
+    WHERE case_id = ANY(${ids}::uuid[])
+    ORDER BY case_id, position
+  `
+  for (const row of rows) {
+    const item = rowToItem(row)
+    const list = grouped.get(item.caseId)
+    if (list) list.push(item)
+    else grouped.set(item.caseId, [item])
+  }
+  return grouped
 }
 
 /**
@@ -125,6 +156,9 @@ export async function setChecklistItemStatus(
 export interface UpdateChecklistItemInput {
   notes?: string
   assignedUserId?: string | null
+  /** Instante ISO, o null para quitar la fecha. `undefined` = no se toca. */
+  dueAt?: string | null
+  eventType?: EventType
 }
 
 export async function updateChecklistItem(
@@ -144,17 +178,33 @@ export async function updateChecklistItem(
         notes = ${input.notes ?? previous.notes},
         assigned_user_id = ${
           input.assignedUserId === undefined ? previous.assignedUserId : input.assignedUserId
-        }::uuid
+        }::uuid,
+        due_at = ${input.dueAt === undefined ? previous.dueAt : input.dueAt}::timestamptz,
+        event_type = ${input.eventType ?? previous.eventType}::event_type
       WHERE id = ${itemId}::uuid
       RETURNING *
     `
+    // El evento del calendario NO se toca aquí: lo escribe el trigger
+    // `checklist_items_alimentan_agenda` a partir de esta misma fila. Hacerlo
+    // también desde la aplicación abriría la puerta a que las dos versiones
+    // discrepen, que es justo lo que el trigger viene a impedir.
     await recordAudit({
       userId,
       action: 'checklist_item_update',
       entity: 'checklist_item',
       entityId: itemId,
-      before: { notes: previous.notes, assignedUserId: previous.assignedUserId },
-      after: { notes: rows[0].notes, assignedUserId: rows[0].assigned_user_id },
+      before: {
+        notes: previous.notes,
+        assignedUserId: previous.assignedUserId,
+        dueAt: previous.dueAt,
+        eventType: previous.eventType,
+      },
+      after: {
+        notes: rows[0].notes,
+        assignedUserId: rows[0].assigned_user_id,
+        dueAt: rows[0].due_at,
+        eventType: rows[0].event_type,
+      },
     })
     return rowToItem(rows[0])
   })

@@ -15,8 +15,15 @@ import { redirect } from 'next/navigation'
 import { requireStaff } from '@/lib/auth/guard'
 import { convertLeadToCase, assignCase, closeCase, reopenCase, setCaseStatus } from '@/lib/db/cases'
 import { addChecklistItem, setChecklistItemStatus, updateChecklistItem } from '@/lib/db/checklist'
+import { setEventDone } from '@/lib/db/events'
 import { setLeadStatus } from '@/lib/db/leads'
-import type { CaseCloseReason, CaseStatus, ChecklistItemStatus } from '@/lib/domain/types'
+import { instantFrom, isPlainDate } from '@/lib/dates'
+import type {
+  CaseCloseReason,
+  CaseStatus,
+  ChecklistItemStatus,
+  EventType,
+} from '@/lib/domain/types'
 
 const CLOSE_REASONS: CaseCloseReason[] = [
   'completed',
@@ -42,6 +49,19 @@ const ITEM_STATUSES: ChecklistItemStatus[] = [
   'completed',
   'not_applicable',
 ]
+
+const EVENT_TYPES: EventType[] = [
+  'call',
+  'hearing',
+  'conciliation',
+  'meeting',
+  'follow_up',
+  'deadline',
+  'other',
+]
+
+/** "HH:MM" en reloj de 24 horas. */
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
 export interface ConvertState {
   error?: string
@@ -114,21 +134,70 @@ export async function setStepStatusAction(formData: FormData): Promise<void> {
   await setChecklistItemStatus(itemId, status, user.id)
   revalidatePath(`/portal/seguimiento/${caseId}`)
   revalidatePath('/portal/seguimiento')
+  // Completar un paso con fecha marca su evento como realizado —lo hace el
+  // trigger—, así que la agenda que estaba en caché ya no dice la verdad.
+  revalidatePath('/portal/calendario')
 }
 
+/**
+ * Notas, responsable y FECHA de un paso.
+ *
+ * La fecha es lo único que hay que capturar para que algo aparezca en la
+ * agenda: no existe un alta de eventos aparte. La pantalla manda día y hora por
+ * separado, en hora del despacho, y aquí se convierten a un instante real —si
+ * se compusiera la cadena a mano, una audiencia agendada desde un servidor en
+ * Virginia saldría corrida en la agenda del abogado.
+ *
+ * Día sin hora se toma como las 9:00: en la agenda del despacho un pendiente
+ * sin hora es un pendiente de primera hora, no de medianoche.
+ */
 export async function updateStepAction(formData: FormData): Promise<void> {
   const user = await requireStaff()
   const itemId = String(formData.get('itemId') ?? '')
   const caseId = String(formData.get('caseId') ?? '')
   const notes = String(formData.get('notes') ?? '').slice(0, 2000)
   const assignedRaw = String(formData.get('assignedUserId') ?? '')
+  const dueDate = String(formData.get('dueDate') ?? '').trim()
+  const dueTimeRaw = String(formData.get('dueTime') ?? '').trim()
+  const eventTypeRaw = String(formData.get('eventType') ?? '') as EventType
+
+  // Fecha inválida se trata como "sin fecha" en vez de reventar: el resto del
+  // formulario —las notas, el responsable— no tiene por qué perderse porque el
+  // navegador mandara algo raro en un campo opcional.
+  const dueAt = isPlainDate(dueDate)
+    ? instantFrom(dueDate, TIME_RE.test(dueTimeRaw) ? dueTimeRaw : '09:00')
+    : null
 
   await updateChecklistItem(
     itemId,
-    { notes, assignedUserId: assignedRaw || null },
+    {
+      notes,
+      assignedUserId: assignedRaw || null,
+      dueAt,
+      eventType: EVENT_TYPES.includes(eventTypeRaw) ? eventTypeRaw : undefined,
+    },
     user.id,
   )
   revalidatePath(`/portal/seguimiento/${caseId}`)
+  revalidatePath('/portal/seguimiento')
+  revalidatePath('/portal/calendario')
+}
+
+/**
+ * Marcar realizado —o reabrir— un evento de la agenda.
+ *
+ * Solo alcanza a los que NO nacieron de un paso de la ruta; el repositorio lo
+ * impone en la propia consulta. Los que sí nacieron ahí se cierran completando
+ * su paso, y dejar que se cerraran por las dos puertas permitiría que la agenda
+ * dijera "hecho" mientras la ruta del caso dice "pendiente".
+ */
+export async function setEventDoneAction(formData: FormData): Promise<void> {
+  await requireStaff()
+  const eventId = String(formData.get('eventId') ?? '')
+  const done = String(formData.get('done') ?? '') === 'si'
+
+  await setEventDone(eventId, done)
+  revalidatePath('/portal/calendario')
 }
 
 export async function addStepAction(formData: FormData): Promise<void> {

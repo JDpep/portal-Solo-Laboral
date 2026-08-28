@@ -1,9 +1,21 @@
 import clsx from 'clsx'
-import { Check, CircleDashed, CircleDot, MinusCircle } from 'lucide-react'
+import { CalendarClock, Check, CircleDashed, CircleDot, MinusCircle } from 'lucide-react'
 import { setStepStatusAction, updateStepAction, addStepAction } from '@/app/portal/seguimiento/actions'
-import { CHECKLIST_STATUS_LABEL } from '@/lib/domain/labels'
-import { formatDateTime } from '@/lib/dates'
-import type { ChecklistItem, PublicStaffUser } from '@/lib/domain/types'
+import { CHECKLIST_STATUS_LABEL, EVENT_TYPE_LABEL, EVENT_TYPE_TONE } from '@/lib/domain/labels'
+import { formatDateTime, formatTime, plainDateOf } from '@/lib/dates'
+import { Badge } from '@/components/ui/Badge'
+import type { ChecklistItem, EventType, PublicStaffUser } from '@/lib/domain/types'
+
+/** Los mismos que acepta la acción del servidor. */
+const EVENT_TYPES: EventType[] = [
+  'follow_up',
+  'call',
+  'hearing',
+  'conciliation',
+  'meeting',
+  'deadline',
+  'other',
+]
 
 /**
  * RUTA DEL CASO.
@@ -18,6 +30,11 @@ import type { ChecklistItem, PublicStaffUser } from '@/lib/domain/types'
  *
  * LOS PASOS NO SON DEFINITIVOS. Salen de una plantilla editable; esta pantalla
  * no sabe cuáles son ni cuántos, solo los pinta en orden.
+ *
+ * AQUÍ SE AGENDA. Ponerle fecha a un paso es lo que lo hace aparecer en la
+ * agenda del despacho: no hay un alta de eventos aparte, a propósito. Capturar
+ * la misma audiencia en dos sitios produce dos audiencias que a la semana ya no
+ * coinciden, y entonces ninguna de las dos sirve.
  */
 export function CaseRoute({
   caseId,
@@ -66,6 +83,21 @@ export function CaseRoute({
 
                 {item.description ? (
                   <p className="mt-0.5 text-sm text-sl-muted">{item.description}</p>
+                ) : null}
+
+                {/* La fecha va destacada y con su tipo: es lo único de este
+                    paso que también vive en la agenda de todo el despacho. */}
+                {item.dueAt ? (
+                  <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
+                    <Badge tone={EVENT_TYPE_TONE[item.eventType]}>
+                      {EVENT_TYPE_LABEL[item.eventType]}
+                    </Badge>
+                    <span className="flex items-center gap-1.5 font-medium text-sl-secondary-strong">
+                      <CalendarClock className="h-4 w-4 shrink-0" aria-hidden />
+                      {formatDateTime(item.dueAt)}
+                    </span>
+                    <span className="text-xs text-sl-muted">· está en la agenda</span>
+                  </p>
                 ) : null}
 
                 {/* Las fechas cuentan la historia del paso: cuándo se empezó y
@@ -199,11 +231,63 @@ function StepActions({
 
       <details className="w-full">
         <summary className="cursor-pointer list-none text-xs font-medium text-sl-primary hover:underline">
-          Notas y responsable
+          {item.dueAt ? 'Fecha, notas y responsable' : 'Agendar, notas y responsable'}
         </summary>
         <form action={updateStepAction} className="mt-2 space-y-2">
           <input type="hidden" name="caseId" value={caseId} />
           <input type="hidden" name="itemId" value={item.id} />
+
+          {/* Los tres campos de la agenda. Vaciar el día quita el evento: es
+              la misma casilla que lo puso, y no hace falta un botón aparte
+              para deshacer algo que se deshace borrando. */}
+          <div className="flex flex-wrap items-end gap-2 rounded-sl bg-sl-background p-3">
+            <div>
+              <label htmlFor={`due-${item.id}`} className="sl-label text-xs">
+                Día
+              </label>
+              <input
+                id={`due-${item.id}`}
+                type="date"
+                name="dueDate"
+                defaultValue={item.dueAt ? plainDateOf(item.dueAt) : ''}
+                className="sl-input w-auto text-sm"
+              />
+            </div>
+            <div>
+              <label htmlFor={`time-${item.id}`} className="sl-label text-xs">
+                Hora
+              </label>
+              <input
+                id={`time-${item.id}`}
+                type="time"
+                name="dueTime"
+                defaultValue={item.dueAt ? formatTime(item.dueAt) : ''}
+                className="sl-input w-auto text-sm"
+              />
+            </div>
+            <div>
+              <label htmlFor={`type-${item.id}`} className="sl-label text-xs">
+                Qué es
+              </label>
+              <select
+                id={`type-${item.id}`}
+                name="eventType"
+                defaultValue={item.eventType}
+                className="sl-input w-auto text-sm"
+              >
+                {EVENT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {EVENT_TYPE_LABEL[type]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="w-full text-xs text-sl-muted">
+              Con día, el paso aparece en la agenda del despacho. Sin hora se
+              agenda a las 9:00. Borra el día para quitarlo de la agenda.
+            </p>
+          </div>
+
           <textarea
             name="notes"
             rows={2}

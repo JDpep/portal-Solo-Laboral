@@ -71,6 +71,26 @@ export function addDays(value: PlainDate, delta: number): PlainDate {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
+/**
+ * El lunes de la semana a la que pertenece una fecha.
+ *
+ * Lunes y no domingo: la semana del despacho es laboral, y arrancarla en
+ * domingo parte el fin de semana en dos pantallas distintas.
+ */
+export function startOfWeek(value: PlainDate): PlainDate {
+  const weekday = new Date(toEpochDay(value)).getUTCDay() // 0 = domingo
+  return addDays(value, weekday === 0 ? -6 : 1 - weekday)
+}
+
+/** "agosto de 2026" — para el encabezado de un rango. */
+export function formatMonthLong(value: PlainDate): string {
+  return new Intl.DateTimeFormat('es-MX', {
+    timeZone: 'UTC',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(toEpochDay(value)))
+}
+
 /** Fecha civil de hoy en la zona del despacho. */
 export function today(timeZone = FIRM_TIME_ZONE): PlainDate {
   // en-CA formatea como YYYY-MM-DD, que es exactamente PlainDate.

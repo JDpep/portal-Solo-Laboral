@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation'
 import { ArrowLeft, CalendarClock, MessageCircle, Phone, RotateCcw } from 'lucide-react'
 import { requireStaff } from '@/lib/auth/guard'
 import { findCaseById, listStatusHistory } from '@/lib/db/cases'
-import { listChecklist, progressOf } from '@/lib/db/checklist'
+import { listChecklist, currentStepOf, progressOf } from '@/lib/db/checklist'
+import { listEventsForCase } from '@/lib/db/events'
 import { listActiveUsers } from '@/lib/db/users'
 import { assignCaseAction, reopenCaseAction, setCaseStatusAction } from '@/app/portal/seguimiento/actions'
 import { formatDate, formatDateLong, formatDateTime } from '@/lib/dates'
@@ -14,6 +15,11 @@ import {
   CASE_CLOSE_REASON_LABEL,
   CASE_STATUS_LABEL,
   CASE_STATUS_TONE,
+  CONTACT_METHOD_LABEL,
+  CONTACT_METHOD_TONE,
+  EVENT_STATUS_LABEL,
+  EVENT_TYPE_LABEL,
+  EVENT_TYPE_TONE,
   LEAD_SOURCE_LABEL,
   OPEN_CASE_STATUSES,
 } from '@/lib/domain/labels'
@@ -22,19 +28,22 @@ import { DemoNotice } from '@/components/ui/States'
 import { CaseRoute } from '@/components/portal/CaseRoute'
 import { CloseCase } from '@/components/portal/CloseCase'
 import { Progress } from '@/components/portal/Progress'
+import { Dato, Ficha, SinDato } from '@/components/portal/FichaTecnica'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * DETALLE DEL CASO — la pantalla donde se trabaja un asunto.
+ * FICHA TÉCNICA DEL CASO — la pantalla donde se trabaja un asunto.
  *
- * Todo lo de arriba responde "¿qué es esto y en qué va?": folio, cliente,
- * estado, progreso y el próximo paso. Debajo, la ruta completa.
+ * Se lee de arriba abajo en el orden de las preguntas que se hacen al abrirla:
+ * quién es y cómo lo alcanzo (encabezado), qué sé de él (la rejilla de datos),
+ * qué me contó, en qué va (la ruta) y qué tiene agendado.
  *
- * NADA se recaptura: el nombre, el teléfono, el estado, la fecha de despido y
+ * NADA se recaptura: el nombre, el teléfono, la entidad, la fecha de despido y
  * lo que la persona contó vienen del lead. Si aquí hubiera un formulario para
- * volver a escribirlos, en un mes habría dos versiones del mismo dato y
- * ninguna sería la buena.
+ * volver a escribirlos, en un mes habría dos versiones del mismo dato y ninguna
+ * sería la buena. Lo único que nace aquí es el trabajo del despacho: los pasos,
+ * sus fechas y sus notas.
  */
 export default async function CaseDetailPage({ params }: { params: { id: string } }) {
   await requireStaff()
@@ -43,16 +52,22 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
   if (!detail) notFound()
 
   const { case: kase, lead, assignedUserName } = detail
-  const [items, users, history] = await Promise.all([
+  const [items, users, history, events] = await Promise.all([
     listChecklist(kase.id),
     listActiveUsers(),
     listStatusHistory(kase.id),
+    listEventsForCase(kase.id),
   ])
   const progress = progressOf(items)
   const closed = !OPEN_CASE_STATUSES.includes(kase.status)
+  const current = currentStepOf(items)
+  const upcoming = events
+    .filter((event) => event.status === 'scheduled' && event.startAt >= new Date().toISOString())
+    .sort((a, b) => a.startAt.localeCompare(b.startAt))
+  const next = upcoming[0] ?? null
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-5xl">
       <Link
         href="/portal/seguimiento"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-sl-primary hover:underline"
@@ -71,7 +86,7 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
         </div>
       ) : null}
 
-      {/* ───────────────────────────── encabezado del caso ─────────────────── */}
+      {/* ───────────────────────────── encabezado ──────────────────────────── */}
       <div className="sl-card sl-in overflow-hidden">
         <div className="border-b border-sl-border bg-sl-primary-soft/50 px-5 py-5 sm:px-7">
           <div className="flex flex-wrap items-center gap-2">
@@ -88,12 +103,6 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
           <div className="mt-3 max-w-xs">
             <Progress {...progress} />
           </div>
-          {kase.currentStage ? (
-            <p className="mt-2 text-sm text-sl-text">
-              <span className="sl-eyebrow">Etapa actual</span>{' '}
-              <span className="font-medium">{kase.currentStage}</span>
-            </p>
-          ) : null}
 
           {lead.isDemo ? (
             <p className="mt-4 text-sm tabular-nums text-sl-muted">{formatPhone(lead.phone)}</p>
@@ -116,8 +125,8 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
           )}
         </div>
 
-        {/* Cierre: se explica antes que nada, porque cambia cómo se lee todo
-            lo demás de la pantalla. */}
+        {/* El cierre se explica antes que nada: cambia cómo se lee todo lo
+            demás de la pantalla. */}
         {closed ? (
           <div className="border-b border-sl-border bg-sl-background px-5 py-4 sm:px-7">
             <p className="text-sm text-sl-text">
@@ -125,7 +134,10 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
               {kase.closedReason ? (
                 <>
                   {' '}
-                  · <strong className="font-semibold">{CASE_CLOSE_REASON_LABEL[kase.closedReason]}</strong>
+                  ·{' '}
+                  <strong className="font-semibold">
+                    {CASE_CLOSE_REASON_LABEL[kase.closedReason]}
+                  </strong>
                 </>
               ) : null}
             </p>
@@ -147,7 +159,9 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
             <form action={assignCaseAction} className="flex items-end gap-2">
               <input type="hidden" name="caseId" value={kase.id} />
               <div>
-                <label htmlFor="assignedUserId" className="sl-label">Responsable</label>
+                <label htmlFor="assignedUserId" className="sl-label">
+                  Responsable
+                </label>
                 <select
                   id="assignedUserId"
                   name="assignedUserId"
@@ -162,14 +176,23 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                   ))}
                 </select>
               </div>
-              <button type="submit" className="sl-btn-secondary">Guardar</button>
+              <button type="submit" className="sl-btn-secondary">
+                Guardar
+              </button>
             </form>
 
             <form action={setCaseStatusAction} className="flex items-end gap-2">
               <input type="hidden" name="caseId" value={kase.id} />
               <div>
-                <label htmlFor="status" className="sl-label">Estado</label>
-                <select id="status" name="status" defaultValue={kase.status} className="sl-input w-auto">
+                <label htmlFor="status" className="sl-label">
+                  Estado
+                </label>
+                <select
+                  id="status"
+                  name="status"
+                  defaultValue={kase.status}
+                  className="sl-input w-auto"
+                >
                   {OPEN_CASE_STATUSES.map((status) => (
                     <option key={status} value={status}>
                       {CASE_STATUS_LABEL[status]}
@@ -177,7 +200,9 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                   ))}
                 </select>
               </div>
-              <button type="submit" className="sl-btn-secondary">Guardar</button>
+              <button type="submit" className="sl-btn-secondary">
+                Guardar
+              </button>
             </form>
 
             <div className="sm:ml-auto">
@@ -186,8 +211,82 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
           </div>
         )}
 
+        {/* ───────────────────────── la rejilla de datos ───────────────────── */}
+        <Ficha>
+          <Dato label="Folio" mono>
+            {kase.folio}
+          </Dato>
+          <Dato label="Teléfono">
+            <span className="tabular-nums">{formatPhone(lead.phone)}</span>
+          </Dato>
+          <Dato label="Entidad">{stateLabel(lead.state)}</Dato>
+          <Dato label="Fecha de despido">{formatDate(lead.dismissalDate)}</Dato>
+
+          <Dato label="Días al registrarse">
+            <DaysBadge days={lead.dismissalDaysAtSubmission} />
+          </Dato>
+          <Dato label="Se registró">{formatDateTime(lead.submittedAt)}</Dato>
+          <Dato label="Origen">{LEAD_SOURCE_LABEL[lead.source]}</Dato>
+          <Dato label="Abrió el caso">{formatDateTime(kase.openedAt)}</Dato>
+
+          <Dato label="Responsable">{assignedUserName ?? <SinDato>Sin asignar</SinDato>}</Dato>
+          <Dato label="Estado del caso">
+            <Badge tone={CASE_STATUS_TONE[kase.status]}>{CASE_STATUS_LABEL[kase.status]}</Badge>
+          </Dato>
+          <Dato label="Progreso de la ruta">
+            <span className="tabular-nums">
+              {progress.completed} de {progress.total} pasos
+            </span>
+          </Dato>
+          <Dato label="Vía que pidió">
+            {lead.preferredContactMethod ? (
+              <Badge tone={CONTACT_METHOD_TONE[lead.preferredContactMethod]}>
+                {CONTACT_METHOD_LABEL[lead.preferredContactMethod]}
+              </Badge>
+            ) : (
+              <SinDato>No eligió</SinDato>
+            )}
+          </Dato>
+
+          <Dato label="Etapa actual" wide>
+            {current ? (
+              current.title
+            ) : (
+              <SinDato>Ruta terminada</SinDato>
+            )}
+          </Dato>
+          <Dato label="Próximo en la agenda" wide>
+            {next ? (
+              <span className="flex flex-wrap items-center gap-1.5">
+                <Badge tone={EVENT_TYPE_TONE[next.eventType]}>
+                  {EVENT_TYPE_LABEL[next.eventType]}
+                </Badge>
+                <span className="text-sl-secondary-strong">{formatDateTime(next.startAt)}</span>
+              </span>
+            ) : (
+              <SinDato>Nada agendado</SinDato>
+            )}
+          </Dato>
+
+          <Dato label="Contactado" >
+            {lead.contactedAt ? formatDateTime(lead.contactedAt) : <SinDato>Todavía no</SinDato>}
+          </Dato>
+          <Dato label="Abrió WhatsApp">
+            {lead.whatsappOpenedAt ? (
+              formatDateTime(lead.whatsappOpenedAt)
+            ) : (
+              <SinDato>No</SinDato>
+            )}
+          </Dato>
+          <Dato label="Lead original" wide>
+            <Link href={`/portal/${lead.id}`} className="text-sl-primary hover:underline">
+              Ver la ficha del lead
+            </Link>
+          </Dato>
+        </Ficha>
+
         {/* ─────────────────────── lo que heredó del lead ──────────────────── */}
-        <div className="border-b border-sl-border px-5 py-5 sm:px-7">
+        <div className="border-t border-sl-border px-5 py-5 sm:px-7">
           <h2 className="sl-eyebrow">Qué nos contó</h2>
           {lead.description ? (
             <p className="mt-2 whitespace-pre-line text-[15px] leading-relaxed text-sl-text">
@@ -201,7 +300,7 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
         </div>
 
         {lead.callPreference ? (
-          <div className="flex items-start gap-2.5 border-b border-sl-border bg-sl-secondary/5 px-5 py-4 sm:px-7">
+          <div className="flex items-start gap-2.5 border-t border-sl-border bg-sl-secondary/5 px-5 py-4 sm:px-7">
             <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-sl-secondary-strong" aria-hidden />
             <p className="text-sm text-sl-text">
               Pidió que le llamaran el{' '}
@@ -210,26 +309,41 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
             </p>
           </div>
         ) : null}
-
-        <dl className="divide-y divide-sl-border">
-          <Row label="Estado">{stateLabel(lead.state)}</Row>
-          <Row label="Fecha de despido">{formatDate(lead.dismissalDate)}</Row>
-          <Row label="Días al registrarse">
-            <DaysBadge days={lead.dismissalDaysAtSubmission} />
-          </Row>
-          <Row label="Responsable">{assignedUserName ?? 'Sin asignar'}</Row>
-          <Row label="Lead original">
-            <Link href={`/portal/${lead.id}`} className="text-sl-primary hover:underline">
-              Ver la ficha del lead
-            </Link>
-          </Row>
-        </dl>
       </div>
 
       {/* ─────────────────────────────── ruta del caso ───────────────────── */}
       <div className="mt-5">
         <CaseRoute caseId={kase.id} items={items} users={users} readOnly={closed} />
       </div>
+
+      {/* ─────────────────────────── agenda de este caso ──────────────────── */}
+      {events.length > 0 ? (
+        <section className="sl-card mt-5 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-sl-border px-5 py-3.5">
+            <h2 className="sl-eyebrow">Agenda de este caso</h2>
+            <Link href="/portal/calendario" className="text-xs text-sl-primary hover:underline">
+              Ver la agenda completa
+            </Link>
+          </div>
+          <ul className="divide-y divide-sl-border">
+            {events.map((event) => (
+              <li key={event.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3">
+                <span className="text-sm font-medium tabular-nums text-sl-text">
+                  {formatDateTime(event.startAt)}
+                </span>
+                <Badge tone={EVENT_TYPE_TONE[event.eventType]}>
+                  {EVENT_TYPE_LABEL[event.eventType]}
+                </Badge>
+                <span className="text-sm text-sl-text">{event.title}</span>
+                <span className="ml-auto text-xs text-sl-muted">
+                  {EVENT_STATUS_LABEL[event.status]}
+                  {event.checklistItemId ? ' · desde la ruta' : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {/* ───────────────────────────── historia de estados ────────────────── */}
       {history.length > 0 ? (
@@ -267,15 +381,6 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
           </ol>
         </section>
       ) : null}
-    </div>
-  )
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="px-5 py-3.5 sm:flex sm:gap-6 sm:px-7">
-      <dt className="sl-eyebrow sm:w-52 sm:shrink-0 sm:pt-0.5">{label}</dt>
-      <dd className="mt-1 text-sm text-sl-text sm:mt-0">{children}</dd>
     </div>
   )
 }

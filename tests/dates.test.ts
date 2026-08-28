@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, compareDates, daysBetween, formatDate, formatSubmittedAt, formatTime, instantFrom, isPlainDate, plainDateOf, today } from '@/lib/dates'
+import { addDays, compareDates, daysBetween, formatDate, formatMonthLong, formatSubmittedAt, formatTime, instantFrom, isPlainDate, plainDateOf, startOfWeek, today } from '@/lib/dates'
 
 describe('fechas civiles', () => {
   it('valida fechas civiles', () => {
@@ -64,5 +64,46 @@ describe('fecha civil del despacho a instante real', () => {
     const instant = instantFrom('2026-12-31', '17:30')
     expect(formatTime(instant)).toBe('17:30')
     expect(plainDateOf(instant)).toBe('2026-12-31')
+  })
+})
+
+/**
+ * La semana de la agenda.
+ *
+ * Empieza en LUNES. Arrancarla en domingo partiría el fin de semana entre dos
+ * pantallas, y el despacho sí agenda llamadas en sábado.
+ */
+describe('semana del despacho', () => {
+  it('devuelve el lunes de la semana de cualquier día', () => {
+    // 2026-08-24 es lunes; del lunes al domingo siguiente todos caen en él.
+    expect(startOfWeek('2026-08-24')).toBe('2026-08-24')
+    expect(startOfWeek('2026-08-27')).toBe('2026-08-24')
+    expect(startOfWeek('2026-08-30')).toBe('2026-08-24') // domingo
+    expect(startOfWeek('2026-08-31')).toBe('2026-08-31') // ya es otra semana
+  })
+
+  it('el domingo pertenece a la semana que termina, no a la que empieza', () => {
+    // Es el caso que un `-weekday` ingenuo se salta: domingo = 0 y lo mandaría
+    // al lunes SIGUIENTE, escondiendo lo agendado ese día.
+    expect(startOfWeek('2026-08-30')).toBe('2026-08-24')
+    expect(daysBetween(startOfWeek('2026-08-30'), '2026-08-30')).toBe(6)
+  })
+
+  it('cruza el cambio de mes y de año sin perder el lunes', () => {
+    expect(startOfWeek('2026-03-01')).toBe('2026-02-23')
+    expect(startOfWeek('2027-01-01')).toBe('2026-12-28')
+    expect(startOfWeek('2024-03-01')).toBe('2024-02-26') // año bisiesto
+  })
+
+  it('siete días desde el lunes caen en el lunes siguiente', () => {
+    // Es la aritmética del rango semiabierto de la agenda: [lunes, lunes+7).
+    for (const dia of ['2026-08-24', '2026-12-28', '2024-02-26']) {
+      expect(startOfWeek(addDays(dia, 7))).toBe(addDays(dia, 7))
+    }
+  })
+
+  it('nombra el mes en español', () => {
+    expect(formatMonthLong('2026-08-24')).toBe('agosto de 2026')
+    expect(formatMonthLong('2026-01-01')).toBe('enero de 2026')
   })
 })

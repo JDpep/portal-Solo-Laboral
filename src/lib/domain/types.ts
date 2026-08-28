@@ -213,6 +213,15 @@ export interface ChecklistItem {
   completedAt: string | null
   completedBy: Id | null
   notes: string
+  /**
+   * Cuándo toca. Es el ÚNICO sitio donde se captura una fecha de trabajo: un
+   * trigger de la base la refleja en el calendario. No hay un alta de eventos
+   * aparte porque capturar la misma audiencia dos veces produce dos audiencias
+   * que a la semana ya no coinciden.
+   */
+  dueAt: string | null
+  /** Qué clase de cita es, para que la agenda la sepa pintar. */
+  eventType: EventType
   createdAt: string
   updatedAt: string
 }
@@ -252,6 +261,8 @@ export interface CalendarEvent {
   id: Id
   leadId: Id | null
   caseId: Id | null
+  /** El paso de la ruta que lo produjo, si nació de ahí. */
+  checklistItemId: Id | null
   eventType: EventType
   title: string
   description: string
@@ -266,6 +277,20 @@ export interface CalendarEvent {
   cancelledAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+/**
+ * Un evento con el contexto que la agenda necesita para ser legible.
+ *
+ * Una lista que dice "Audiencia · 10:30" y nada más obliga a abrir cada renglón
+ * para saber de quién es. El nombre y el folio viajan con el evento.
+ */
+export interface AgendaEvent extends CalendarEvent {
+  clientName: string | null
+  folio: string | null
+  phone: string | null
+  assignedUserName: string | null
+  isDemo: boolean
 }
 
 // ──────────────────────────────────────────────────────────────── historia
