@@ -17,6 +17,7 @@ import type {
   ChecklistItem,
   ChecklistItemStatus,
   ChecklistTemplate,
+  ChecklistTemplateItem,
   EventType,
 } from '@/lib/domain/types'
 
@@ -248,8 +249,15 @@ export async function listTemplates(): Promise<ChecklistTemplate[]> {
   const templates = await sql`
     SELECT * FROM case_checklist_templates ORDER BY is_default DESC, name
   `
+  // `usedByCases` es lo que hace visible en la pantalla que retirar no es
+  // borrar: un paso que llevan catorce casos sigue en esos catorce casos.
   const items = await sql`
-    SELECT * FROM case_checklist_template_items ORDER BY template_id, position
+    SELECT
+      i.*,
+      (SELECT count(*)::int FROM case_checklist_items c WHERE c.template_item_id = i.id)
+        AS used_by_cases
+    FROM case_checklist_template_items i
+    ORDER BY i.template_id, i.position
   `
   return templates.map((t) => ({
     id: t.id,
@@ -257,16 +265,170 @@ export async function listTemplates(): Promise<ChecklistTemplate[]> {
     description: t.description,
     isDefault: t.is_default,
     isActive: t.is_active,
-    items: items
-      .filter((i) => i.template_id === t.id)
-      .map((i) => ({
-        id: i.id,
-        templateId: i.template_id,
-        title: i.title,
-        description: i.description,
-        position: i.position,
-      })),
+    items: items.filter((i) => i.template_id === t.id).map(rowToTemplateItem),
   }))
+}
+
+function rowToTemplateItem(row: Row): ChecklistTemplateItem {
+  return {
+    id: row.id,
+    templateId: row.template_id,
+    title: row.title,
+    description: row.description,
+    position: row.position,
+    isActive: row.is_active,
+    usedByCases: row.used_by_cases ?? 0,
+  }
+}
+
+// ─────────────────────────────────────────────────── edición de la plantilla
+
+/** Se añade AL FINAL. Colocarlo en medio es mover, y eso tiene su propio botón. */
+export async function createTemplateItem(
+  templateId: string,
+  input: { title: string; description?: string },
+  actorId: string,
+): Promise<ChecklistTemplateItem | null> {
+  if (!isUuid(templateId)) return null
+  const rows = await db()`
+    INSERT INTO case_checklist_template_items (template_id, title, description, position)
+    SELECT ${templateId}::uuid, ${input.title}, ${input.description ?? ''},
+           COALESCE(max(position), 0) + 1
+    FROM case_checklist_template_items WHERE template_id = ${templateId}::uuid
+    RETURNING *
+  `
+  if (!rows.length) return null
+  await recordAudit({
+    userId: actorId,
+    action: 'template_item_create',
+    entity: 'template_item',
+    entityId: rows[0].id,
+    after: { title: rows[0].title, position: rows[0].position },
+  })
+  return rowToTemplateItem(rows[0])
+}
+
+/**
+ * Cambiar el texto de un paso.
+ *
+ * NO toca los casos que ya lo llevan, y es a propósito: sus pasos se copiaron
+ * al convertir. Corregir hoy una errata reescribiría el expediente de asuntos
+ * que ya se trabajaron con el texto anterior.
+ */
+export async function updateTemplateItem(
+  itemId: string,
+  input: { title?: string; description?: string },
+  actorId: string,
+): Promise<ChecklistTemplateItem | null> {
+  if (!isUuid(itemId)) return null
+  const sql = db()
+  const before = await sql`SELECT * FROM case_checklist_template_items WHERE id = ${itemId}::uuid`
+  if (!before.length) return null
+
+  const rows = await sql`
+    UPDATE case_checklist_template_items SET
+      title = ${input.title ?? before[0].title},
+      description = ${input.description ?? before[0].description}
+    WHERE id = ${itemId}::uuid
+    RETURNING *
+  `
+  await recordAudit({
+    userId: actorId,
+    action: 'template_item_update',
+    entity: 'template_item',
+    entityId: itemId,
+    before: { title: before[0].title, description: before[0].description },
+    after: { title: rows[0].title, description: rows[0].description },
+  })
+  return rowToTemplateItem(rows[0])
+}
+
+/**
+ * Retirar o reponer un paso.
+ *
+ * Retirar es lo más parecido a borrar que existe aquí, y sigue sin borrar nada:
+ * el paso deja de copiarse a los casos NUEVOS y no desaparece de ninguno de los
+ * que ya lo llevan. Un trigger de la base rechaza retirar el último vigente —una
+ * plantilla vacía produciría casos sin ruta que nadie puede avanzar—, y ese
+ * rechazo llega aquí como `plantilla_sin_pasos`.
+ */
+export async function setTemplateItemActive(
+  itemId: string,
+  active: boolean,
+  actorId: string,
+): Promise<{ ok: true; item: ChecklistTemplateItem } | { ok: false; code: 'not_found' | 'last_one' }> {
+  if (!isUuid(itemId)) return { ok: false, code: 'not_found' }
+  try {
+    return await transaction(async () => {
+      const sql = db()
+      const rows = await sql`
+        UPDATE case_checklist_template_items SET is_active = ${active}
+        WHERE id = ${itemId}::uuid RETURNING *
+      `
+      if (!rows.length) return { ok: false as const, code: 'not_found' as const }
+      await recordAudit({
+        userId: actorId,
+        action: active ? 'template_item_restore' : 'template_item_retire',
+        entity: 'template_item',
+        entityId: itemId,
+        after: { title: rows[0].title, isActive: active },
+      })
+      return { ok: true as const, item: rowToTemplateItem(rows[0]) }
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    if (message.includes('plantilla_sin_pasos')) return { ok: false, code: 'last_one' }
+    throw error
+  }
+}
+
+/**
+ * Subir o bajar un paso, intercambiándolo con su vecino.
+ *
+ * El intercambio pasa por una posición temporal porque `UNIQUE (template_id,
+ * position)` se comprueba sentencia a sentencia: escribir directamente la
+ * posición del vecino chocaría con la suya antes de que el vecino se aparte.
+ */
+export async function moveTemplateItem(
+  itemId: string,
+  direction: 'up' | 'down',
+  actorId: string,
+): Promise<boolean> {
+  if (!isUuid(itemId)) return false
+  return transaction(async () => {
+    const sql = db()
+    const current = await sql`
+      SELECT * FROM case_checklist_template_items WHERE id = ${itemId}::uuid FOR UPDATE
+    `
+    if (!current.length) return false
+    const item = current[0]
+
+    const neighbour = await sql`
+      SELECT * FROM case_checklist_template_items
+      WHERE template_id = ${item.template_id}::uuid
+        ${direction === 'up' ? sql`AND position < ${item.position}` : sql`AND position > ${item.position}`}
+      ORDER BY position ${direction === 'up' ? sql`DESC` : sql`ASC`}
+      LIMIT 1
+      FOR UPDATE
+    `
+    // Ya está arriba del todo o abajo del todo: no es un error, no hay nada que hacer.
+    if (!neighbour.length) return false
+
+    const temp = 100000 + item.position
+    await sql`UPDATE case_checklist_template_items SET position = ${temp} WHERE id = ${item.id}::uuid`
+    await sql`UPDATE case_checklist_template_items SET position = ${item.position} WHERE id = ${neighbour[0].id}::uuid`
+    await sql`UPDATE case_checklist_template_items SET position = ${neighbour[0].position} WHERE id = ${item.id}::uuid`
+
+    await recordAudit({
+      userId: actorId,
+      action: 'template_item_move',
+      entity: 'template_item',
+      entityId: itemId,
+      before: { position: item.position },
+      after: { position: neighbour[0].position, title: item.title },
+    })
+    return true
+  })
 }
 
 /** La plantilla que se aplica al convertir. Solo puede haber una activa. */

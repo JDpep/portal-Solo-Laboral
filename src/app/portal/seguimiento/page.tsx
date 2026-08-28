@@ -63,7 +63,12 @@ export default async function SeguimientoPage({
     findDefaultTemplate(),
     listStepsForCases(result.rows.map((row) => row.id)),
   ])
-  const columns: ChecklistTemplateItem[] = template?.items ?? []
+  // Solo los pasos VIGENTES son columnas. Un paso retirado en Administración
+  // sigue existiendo dentro de los casos que ya lo llevaban —no se les borra
+  // nada—, pero deja de ser una columna de la cuadrícula: se ve al abrir el
+  // caso, y aquí se cuenta como paso fuera de la cuadrícula.
+  const columns: ChecklistTemplateItem[] = (template?.items ?? []).filter((item) => item.isActive)
+  const columnIds = new Set(columns.map((column) => column.id))
   const sortParams = { ...params, page: undefined }
 
   return (
@@ -226,7 +231,9 @@ export default async function SeguimientoPage({
                   <TBody>
                     {result.rows.map((row, i) => {
                       const items = stepsByCase.get(row.id) ?? []
-                      const extra = items.filter((item) => !item.templateItemId).length
+                      const extra = items.filter(
+                        (item) => !item.templateItemId || !columnIds.has(item.templateItemId),
+                      ).length
                       return (
                         <TR
                           key={row.id}
@@ -251,8 +258,7 @@ export default async function SeguimientoPage({
                             </span>
                             {extra > 0 ? (
                               <span className="mt-0.5 block text-[11px] text-sl-muted">
-                                +{extra} paso{extra === 1 ? '' : 's'} propio
-                                {extra === 1 ? '' : 's'} de este caso
+                                +{extra} paso{extra === 1 ? '' : 's'} fuera de la cuadrícula
                               </span>
                             ) : null}
                           </td>

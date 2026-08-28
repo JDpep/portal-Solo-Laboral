@@ -16,7 +16,7 @@ import type { AuditAction, AuditEntry } from '@/lib/domain/types'
 export interface AuditInput {
   userId: string | null
   action: AuditAction
-  entity: 'lead' | 'case' | 'checklist_item' | 'event' | 'user' | 'session'
+  entity: 'lead' | 'case' | 'checklist_item' | 'event' | 'user' | 'session' | 'template_item'
   entityId: string | null
   /** Estado antes y después, para las modificaciones importantes. */
   before?: unknown

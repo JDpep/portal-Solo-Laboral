@@ -241,6 +241,16 @@ export interface ChecklistTemplateItem {
   title: string
   description: string
   position: number
+  /**
+   * Un paso RETIRADO deja de copiarse a los casos nuevos, pero sigue entero en
+   * los que ya lo llevan: cambiar el procedimiento del despacho no puede
+   * reescribir el expediente de un asunto en curso. No se borra —la clave ajena
+   * lo impide— porque es la referencia con la que la cuadrícula de Seguimiento
+   * empareja cada casilla con su columna.
+   */
+  isActive: boolean
+  /** Cuántos casos lo llevan. Es lo que hace visible que retirar no es borrar. */
+  usedByCases?: number
 }
 
 // ───────────────────────────────────────────────────────────────── calendario
@@ -333,6 +343,15 @@ export type AuditAction =
   | 'event_create'
   | 'event_update'
   | 'event_cancel'
+  | 'user_create'
+  | 'user_update'
+  | 'user_status_change'
+  | 'user_password_set'
+  | 'template_item_create'
+  | 'template_item_update'
+  | 'template_item_retire'
+  | 'template_item_restore'
+  | 'template_item_move'
 
 export interface AuditEntry {
   id: Id
