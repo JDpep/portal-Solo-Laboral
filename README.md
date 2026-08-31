@@ -140,8 +140,8 @@ propias.
 ```bash
 npm run typecheck    # tsc --noEmit
 npm run lint
-npm test             # 92 pruebas puras: motor, fechas, agenda, mensajes, validación
-npm run test:db      # 117 de integración contra Postgres real (esquema `test`)
+npm test             # 102 pruebas puras: motor, fechas, agenda, mensajes, validación
+npm run test:db      # 124 de integración contra Postgres real (esquema `test`)
 npm run build
 ```
 
@@ -165,7 +165,26 @@ SOLO_LABORAL_WHATSAPP_NUMBER=   # 52 + 10 dígitos. SIN ESTO la opción de
 WHATSAPP_MESSAGE_TEMPLATE=      # opcional; por defecto, la plantilla neutra
 QUICK_CALL_MIN_DELAY=10         # ventana de la llamada próxima, en minutos
 QUICK_CALL_MAX_DELAY=15
+
+RESEND_API_KEY=                 # avisos al despacho. SIN LAS TRES no se avisa
+MAIL_FROM=                      # "Avisos <avisos@dominio-verificado.mx>"
+ALERTA_DESTINOS=                # destinatarios, separados por coma
+SITE_URL=                       # para los enlaces dentro del correo
 ```
+
+### Avisos al despacho
+
+Cuando entra un caso que pasa el filtro sale un correo, y cuando alguien pide
+que le llamen **en los próximos minutos** sale otro con el asunto en
+imperativo: la pantalla acaba de prometerle una llamada a esa persona, y hasta
+ahora esa promesa no la recibía nadie.
+
+Todo es «mejor esfuerzo». Si falta la clave, si el buzón falla o si Resend
+tarda, la solicitud **se guarda igual**: el formulario es la puerta de entrada
+de alguien que acaba de perder su trabajo, y perder su caso por un problema de
+correo sería el peor fallo posible. El correo lleva lo justo para actuar —a
+quién llamar y a qué número— y **no** el relato del despido: para eso está el
+enlace al portal.
 
 ---
 

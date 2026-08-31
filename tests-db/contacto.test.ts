@@ -67,7 +67,7 @@ async function elLead() {
 beforeEach(async () => {
   jar.clear()
   await resetDb()
-  resetRateLimits()
+  await resetRateLimits()
   ip = '187.190.0.1'
 })
 

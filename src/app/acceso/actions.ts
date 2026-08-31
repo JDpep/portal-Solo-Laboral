@@ -16,7 +16,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   if (!email || !password) return { error: 'Escribe tu correo y tu contraseña.' }
 
   const rateKey = `login|${email.toLowerCase()}|${clientIp() ?? 'sin-ip'}`
-  const rate = checkRate(rateKey, LOGIN_POLICY)
+  const rate = await checkRate(rateKey, LOGIN_POLICY)
   if (!rate.allowed) {
     return {
       error: `Demasiados intentos fallidos. Vuelve a intentar en ${Math.ceil(rate.retryAfterSeconds / 60)} minutos.`,
@@ -29,14 +29,14 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   const passwordOk = await verifyPassword(password, user?.passwordHash ?? null)
 
   if (!user || user.status !== 'active' || !passwordOk) {
-    registerHit(rateKey)
+    await registerHit(rateKey)
     // Mensaje único: no revela si el correo existe ni si la cuenta está inactiva.
     return {
       error: 'Correo o contraseña incorrectos, o la cuenta no está activa.',
     }
   }
 
-  clearRate(rateKey)
+  await clearRate(rateKey)
   await touchLastLogin(user.id)
   setSessionCookie(user.id)
   redirect('/portal')

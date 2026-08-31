@@ -32,6 +32,11 @@ import { clientIp } from '@/lib/auth/session'
 import { readLeadClaim, setLeadClaim } from '@/lib/auth/lead-claim'
 import { LEAD_POLICY, checkRate, registerHit } from '@/lib/auth/rate-limit'
 import { qualifyLead } from '@/lib/domain/qualification'
+import {
+  avisarCasoCalificado,
+  avisarLlamadaAgendada,
+  avisarLlamadaInmediata,
+} from '@/lib/mail/avisos'
 import { parseCallPreference } from '@/lib/domain/call-time'
 import { EMPTY_LEAD_VALUES, parseLeadForm, readLeadValues } from '@/lib/domain/lead-form'
 import { HONEYPOT_FIELD, toUnqualifiedReason } from '@/lib/domain/lead-submission'
@@ -65,7 +70,7 @@ export async function submitLeadAction(
 
   // 2. Límite por IP, antes de gastar trabajo en validar.
   const rateKey = `lead|${clientIp() ?? 'sin-ip'}`
-  const rate = checkRate(rateKey, LEAD_POLICY)
+  const rate = await checkRate(rateKey, LEAD_POLICY)
   if (!rate.allowed) {
     return {
       status: 'blocked',
@@ -78,7 +83,7 @@ export async function submitLeadAction(
   const submittedOn = today()
   const parsed = parseLeadForm(values, submittedOn)
   if (!parsed.ok) {
-    registerHit(rateKey)
+    await registerHit(rateKey)
     return {
       status: 'invalid',
       fieldErrors: parsed.fieldErrors,
@@ -87,7 +92,7 @@ export async function submitLeadAction(
     }
   }
 
-  registerHit(rateKey)
+  await registerHit(rateKey)
 
   // 4. Envío repetido: se responde igual que la primera vez, sin duplicar.
   const previous = await findRecentSubmission(
@@ -128,6 +133,13 @@ export async function submitLeadAction(
     // 7. Permiso temporal para elegir hora de llamada. Solo los calificados:
     //    a quien no pasó el filtro no se le ofrece la pantalla ni la cookie.
     setLeadClaim(lead.id)
+
+    // 8. Que alguien se entere. Hasta ahora el caso aparecía en el portal y ya:
+    //    si nadie lo abría, nadie se enteraba, y este filtro vale justamente por
+    //    la rapidez del contacto. Va DESPUÉS de guardar y con su propio manejo
+    //    de errores: el aviso puede fallar, la solicitud no.
+    await avisarCasoCalificado(lead)
+
     return { status: 'qualified', folio: lead.folio, contact: contactOptions(lead) }
   }
   return { status: 'unqualified', reason: toUnqualifiedReason(lead.qualificationReason) }
@@ -158,14 +170,14 @@ export async function scheduleCallAction(
   }
 
   const rateKey = `agenda|${clientIp() ?? 'sin-ip'}`
-  const rate = checkRate(rateKey, LEAD_POLICY)
+  const rate = await checkRate(rateKey, LEAD_POLICY)
   if (!rate.allowed) {
     return {
       status: 'error',
       message: `Demasiados intentos desde esta conexión. Vuelve a intentarlo en ${Math.ceil(rate.retryAfterSeconds / 60)} minutos.`,
     }
   }
-  registerHit(rateKey)
+  await registerHit(rateKey)
 
   const parsed = parseCallPreference(formData.get('callDate'), formData.get('callTime'), today())
   if (!parsed.ok) return { status: 'error', message: parsed.message }
@@ -217,6 +229,8 @@ export async function scheduleCallAction(
         'No pudimos guardar el horario. Tu caso ya está registrado y un abogado te llamará de todos modos.',
     }
   }
+
+  await avisarLlamadaAgendada(updated, parsed.data.date, formatCallTime(parsed.data.time))
 
   return { status: 'scheduled', preference: parsed.data }
 }
@@ -320,14 +334,14 @@ export async function requestQuickCallAction(): Promise<QuickCallState> {
   }
 
   const rateKey = `contacto|${clientIp() ?? 'sin-ip'}`
-  const rate = checkRate(rateKey, LEAD_POLICY)
+  const rate = await checkRate(rateKey, LEAD_POLICY)
   if (!rate.allowed) {
     return {
       status: 'error',
       message: `Demasiados intentos desde esta conexión. Vuelve a intentarlo en ${Math.ceil(rate.retryAfterSeconds / 60)} minutos.`,
     }
   }
-  registerHit(rateKey)
+  await registerHit(rateKey)
 
   const window = quickCallDelayMinutes()
   const startAt = new Date(Date.now() + window.min * 60_000).toISOString()
@@ -359,5 +373,10 @@ export async function requestQuickCallAction(): Promise<QuickCallState> {
         'No pudimos registrar tu solicitud de llamada. Tu caso ya está registrado y un abogado te llamará de todos modos.',
     }
   }
+  // El urgente de los tres: la pantalla acaba de prometerle a esa persona una
+  // llamada en minutos. Sin este correo, la promesa la hace el sistema y no la
+  // recibe nadie.
+  await avisarLlamadaInmediata(lead, window.min)
+
   return { status: 'requested', window }
 }

@@ -42,7 +42,7 @@ const IDLE = { status: 'idle' } as const
 
 beforeEach(async () => {
   await resetDb()
-  resetRateLimits()
+  await resetRateLimits()
   ip = '187.190.0.1'
 })
 

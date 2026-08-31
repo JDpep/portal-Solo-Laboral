@@ -3,13 +3,14 @@ import { db } from '@/lib/db/sql'
 import { markLeadsWithoutResponse } from '@/lib/db/leads'
 import { recordAudit } from '@/lib/db/audit'
 import { noResponseDays } from '@/lib/config/contact'
+import { purgeRateLimits } from '@/lib/auth/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * MANTENIMIENTO DIARIO.
  *
- * Lo llama el cron de Vercel una vez al día y hace dos cosas.
+ * Lo llama el cron de Vercel una vez al día y hace tres cosas.
  *
  * 1. TOCA LA BASE para que no se duerma. Supabase en plan gratuito pausa un
  *    proyecto sin actividad, y pausado no devuelve un error bonito: tira el
@@ -65,6 +66,11 @@ export async function GET(request: Request) {
       })
     }
 
+    // 3. LIMPIA los intentos que ya no caben en ninguna ventana. Desde que el
+    //    límite vive en la base, esa tabla crece con cada acceso y cada envío
+    //    del formulario, y nadie vuelve a mirar las filas viejas.
+    const intentosPurgados = await purgeRateLimits()
+
     const rows = await db()`
       SELECT
         (SELECT count(*)::int FROM leads)  AS leads,
@@ -72,7 +78,12 @@ export async function GET(request: Request) {
         (SELECT count(*)::int FROM calendar_events
           WHERE status = 'scheduled' AND start_at < now())        AS atrasados
     `
-    return NextResponse.json({ ok: true, sinRespuesta: marcados.length, ...rows[0] })
+    return NextResponse.json({
+      ok: true,
+      sinRespuesta: marcados.length,
+      intentosPurgados,
+      ...rows[0],
+    })
   } catch (error) {
     // Se responde 500 para que el cron quede marcado como fallido en Vercel: un
     // mantenimiento que falla en silencio no es mantenimiento.

@@ -1,13 +1,24 @@
 /**
- * Ventana deslizante en memoria.
+ * Ventana deslizante EN LA BASE.
  *
  * Protege dos cosas distintas con el mismo mecanismo: el acceso al portal
  * (fuerza bruta contra contraseñas) y el formulario público (spam y bots).
  *
- * Limitación de Fase 1: el conteo es por instancia. En serverless cada
- * instancia cuenta por separado, así que el límite efectivo es más flojo de lo
- * que dice el número. En Fase 2 pasa a la base o a un almacén compartido.
+ * POR QUÉ NO EN MEMORIA. Lo estuvo hasta el 2026-08-31, y en serverless eso no
+ * es un límite: cada instancia contaba por separado, así que el número que
+ * anunciaba la pantalla había que multiplicarlo por cuantas instancias quisiera
+ * levantar quien atacara —y atacar es precisamente lo que hace que Vercel
+ * levante más—. La cuenta tiene que ser una sola, y el único sitio que todas
+ * las instancias comparten es Postgres.
+ *
+ * SE FALLA HACIA EL LADO QUE DEJA PASAR. Si la consulta revienta, se permite el
+ * intento en vez de bloquearlo. No es indulgencia: sin base no hay portal —el
+ * acceso no puede leer al usuario ni el formulario guardar la solicitud—, así
+ * que negar aquí no protegería nada y solo cambiaría un error claro por una
+ * pantalla que dice "demasiados intentos" a quien no ha intentado nada.
  */
+import { db } from '@/lib/db/sql'
+
 export interface RateLimitPolicy {
   /** Intentos permitidos dentro de la ventana. */
   limit: number
@@ -33,51 +44,82 @@ export const LEAD_POLICY: RateLimitPolicy = {
   windowMs: 60 * 60 * 1000,
 }
 
-interface Bucket {
-  attempts: number[]
-}
-
-const globalRef = globalThis as unknown as {
-  __slRateLimit?: Map<string, Bucket>
-}
-
-function buckets(): Map<string, Bucket> {
-  if (!globalRef.__slRateLimit) globalRef.__slRateLimit = new Map()
-  return globalRef.__slRateLimit
-}
-
 export interface RateLimitResult {
   allowed: boolean
   retryAfterSeconds: number
 }
 
-export function checkRate(key: string, policy: RateLimitPolicy): RateLimitResult {
-  const now = Date.now()
-  const bucket = buckets().get(key) ?? { attempts: [] }
-  bucket.attempts = bucket.attempts.filter((t) => now - t < policy.windowMs)
-  buckets().set(key, bucket)
+const PERMITIDO: RateLimitResult = { allowed: true, retryAfterSeconds: 0 }
 
-  if (bucket.attempts.length >= policy.limit) {
-    const oldest = bucket.attempts[0]
-    return {
-      allowed: false,
-      retryAfterSeconds: Math.ceil((policy.windowMs - (now - oldest)) / 1000),
-    }
+/**
+ * ¿Puede intentarlo?
+ *
+ * No anota nada: solo mira. Quien llama decide qué cuenta como intento —el
+ * acceso solo apunta los FALLIDOS y borra la cuenta al acertar; el formulario
+ * apunta todos los envíos— y esa diferencia es deliberada: una contraseña
+ * correcta no debe acercarte al bloqueo.
+ */
+export async function checkRate(
+  key: string,
+  policy: RateLimitPolicy,
+): Promise<RateLimitResult> {
+  const segundos = policy.windowMs / 1000
+  try {
+    const [fila] = await db()`
+      SELECT count(*)::int AS intentos, min(hit_at) AS mas_viejo
+        FROM rate_limit_hits
+       WHERE bucket = ${key}
+         AND hit_at > now() - make_interval(secs => ${segundos})
+    `
+    const intentos: number = fila?.intentos ?? 0
+    if (intentos < policy.limit) return PERMITIDO
+
+    // Se libera cuando el intento MÁS VIEJO sale de la ventana, no cuando pasa
+    // la ventana entera desde ahora: es una ventana deslizante, y decir de más
+    // haría que la gente esperara sin necesidad.
+    const masViejo = fila?.mas_viejo ? new Date(fila.mas_viejo).getTime() : Date.now()
+    const restante = policy.windowMs - (Date.now() - masViejo)
+    return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(restante / 1000)) }
+  } catch {
+    return PERMITIDO
   }
-  return { allowed: true, retryAfterSeconds: 0 }
 }
 
-export function registerHit(key: string): void {
-  const bucket = buckets().get(key) ?? { attempts: [] }
-  bucket.attempts.push(Date.now())
-  buckets().set(key, bucket)
+/** Apunta un intento. */
+export async function registerHit(key: string): Promise<void> {
+  try {
+    await db()`INSERT INTO rate_limit_hits (bucket) VALUES (${key})`
+  } catch {
+    // No anotar un intento nunca debe tumbar la operación que lo provocó.
+  }
 }
 
-export function clearRate(key: string): void {
-  buckets().delete(key)
+/** Borra la cuenta de una clave. El acceso la llama al acertar la contraseña. */
+export async function clearRate(key: string): Promise<void> {
+  try {
+    await db()`DELETE FROM rate_limit_hits WHERE bucket = ${key}`
+  } catch {
+    // Ídem: no acertar a limpiar no puede impedir entrar.
+  }
+}
+
+/**
+ * Purga lo que ya no cuenta para ninguna ventana. La llama el mantenimiento
+ * diario: sin esto la tabla crece para siempre con filas que nadie consulta.
+ *
+ * El margen sobre la ventana más larga —una hora— es amplio a propósito: borrar
+ * justo en el borde no gana nada y podría recortar una ventana en curso.
+ */
+export async function purgeRateLimits(olderThanHours = 24): Promise<number> {
+  const rows = await db()`
+    DELETE FROM rate_limit_hits
+     WHERE hit_at < now() - make_interval(hours => ${olderThanHours})
+    RETURNING id
+  `
+  return rows.length
 }
 
 /** Solo para tests. */
-export function resetRateLimits(): void {
-  globalRef.__slRateLimit = new Map()
+export async function resetRateLimits(): Promise<void> {
+  await db()`TRUNCATE rate_limit_hits`
 }

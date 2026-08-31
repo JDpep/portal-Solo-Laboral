@@ -48,7 +48,7 @@ export async function cambiarPasswordAction(
   if (!actual || !nueva) return { error: 'Escribe tu contraseña actual y la nueva.' }
 
   const clave = `password|${sesion.id}|${clientIp() ?? 'sin-ip'}`
-  const intento = checkRate(clave, LOGIN_POLICY)
+  const intento = await checkRate(clave, LOGIN_POLICY)
   if (!intento.allowed) {
     return {
       error: `Demasiados intentos fallidos. Vuelve a intentar en ${Math.ceil(intento.retryAfterSeconds / 60)} minutos.`,
@@ -60,10 +60,10 @@ export async function cambiarPasswordAction(
   if (!usuario || usuario.status !== 'active') return { error: 'Tu sesión expiró. Vuelve a entrar.' }
 
   if (!(await verifyPassword(actual, usuario.passwordHash))) {
-    registerHit(clave)
+    await registerHit(clave)
     return { error: 'Tu contraseña actual no es correcta.' }
   }
-  clearRate(clave)
+  await clearRate(clave)
 
   const flojita = validatePasswordStrength(nueva)
   if (flojita) return { error: flojita }
