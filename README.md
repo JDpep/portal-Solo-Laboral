@@ -94,8 +94,11 @@ npm run dev                    # http://localhost:3000
 ### Desarrollo NO toca los datos del despacho
 
 `POSTGRES_SCHEMA=dev` es la línea que separa tu servidor de desarrollo de los
-datos reales. Sin ella, `next dev` abre la conexión en `public` —producción— y
-cualquier cosa que pruebes en el portal queda escrita en la agenda del despacho.
+datos reales, y **ya no es opcional**: sin ella, `next dev` se niega a consultar
+la base y te dice qué poner. `db:migrate` y `db:seed` hacen lo mismo. No hay
+valor por omisión fuera de Vercel, a propósito — documentarlo no bastaba: quien
+clona el repo y escribe `npm run dev` todavía no ha leído el README, y lo que
+pase entonces se escribe sobre datos personales de prospectos reales.
 
 `dev` es una **réplica completa** del esquema dentro de la misma base: mismas
 tablas, mismos triggers, mismas restricciones, ni un dato real. `db:migrate` y
@@ -110,6 +113,10 @@ Vercel no define la variable, así que **el portal desplegado siempre sale en
 ```bash
 POSTGRES_SCHEMA=public npm run db:migrate -- --dry   # qué le falta a producción
 ```
+
+`db:seed` **no imprime la contraseña**: estas cuentas entran al portal real y el
+historial de una terminal, el registro de un CI o una captura pegada en un chat
+no los controla nadie. Quien la necesite ya la tiene, en su `.env.local`.
 
 `db:seed` deja dos cuentas de **demostración** —`Admin@SL.mx` (rol `admin`) y
 `User@SL.mx` (rol `lawyer`)— con la contraseña que pongas en

@@ -27,7 +27,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import postgres from 'postgres'
-import { loadEnv } from './env.mjs'
+import { loadEnv, resolverEsquema } from './env.mjs'
 
 loadEnv()
 
@@ -40,13 +40,7 @@ if (!url) {
 }
 
 const dryRun = process.argv.includes('--dry')
-const schemaFlag = process.argv.indexOf('--schema')
-const schema =
-  schemaFlag !== -1 ? process.argv[schemaFlag + 1] : (process.env.POSTGRES_SCHEMA ?? 'public')
-if (!/^[a-z_][a-z0-9_]*$/.test(schema)) {
-  console.error(`Nombre de esquema inválido: ${schema}`)
-  process.exit(1)
-}
+const schema = resolverEsquema(process.argv, 'db:migrate')
 const sql = postgres(url, { prepare: false, onnotice: () => {} })
 
 try {

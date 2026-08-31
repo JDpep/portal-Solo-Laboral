@@ -41,12 +41,55 @@ function connectionString(): string {
  * `public`. Quien trabaja en local pone POSTGRES_SCHEMA=dev en su .env.local y
  * su servidor de desarrollo deja de escribir sobre los datos del despacho.
  */
-const SCHEMA = process.env.POSTGRES_SCHEMA ?? 'public'
+// `|| undefined` y no `??`: una variable puesta pero VACÍA —fácil de dejar así
+// en un panel de configuración— pasaría el `??` y dejaría el `search_path` sin
+// esquema, con la aplicación fallando por todas partes sin decir por qué.
+const SCHEMA_ELEGIDO = process.env.POSTGRES_SCHEMA || undefined
+const SCHEMA = SCHEMA_ELEGIDO ?? 'public'
+
+/**
+ * NO SE ARRANCA `next dev` CONTRA PRODUCCIÓN POR DESCUIDO.
+ *
+ * Documentarlo en el README no basta: quien clona el repo en otra máquina y
+ * escribe `npm run dev` no ha leído nada todavía, y lo que pase entonces se
+ * escribe sobre datos personales de prospectos reales. Así que en desarrollo el
+ * esquema hay que ELEGIRLO; no hay valor por omisión.
+ *
+ * La condición es `NODE_ENV === 'development'`, que solo pone `next dev`. En
+ * producción y en las vistas previas de Vercel vale 'production', de modo que
+ * esta guarda no puede dispararse ahí ni tumbar el portal —que es exactamente
+ * lo que no debe hacer una comprobación de seguridad.
+ *
+ * Poner `POSTGRES_SCHEMA=public` a mano sigue permitido: mirar producción desde
+ * local es legítimo de vez en cuando. Lo que deja de existir es hacerlo sin
+ * enterarse.
+ */
+function exigirEsquemaExplicitoEnDesarrollo(): void {
+  if (SCHEMA_ELEGIDO && !/^[a-z_][a-z0-9_]*$/.test(SCHEMA_ELEGIDO)) {
+    throw new Error(`POSTGRES_SCHEMA no es un nombre de esquema válido: «${SCHEMA_ELEGIDO}»`)
+  }
+  if (SCHEMA_ELEGIDO || process.env.NODE_ENV !== 'development') return
+  throw new Error(
+    'POSTGRES_SCHEMA no está definido y esto es desarrollo.\n\n' +
+      'Sin él, el servidor de desarrollo escribiría en «public», que es la base\n' +
+      'REAL del despacho, con datos personales de prospectos.\n\n' +
+      'Añade a .env.local:\n' +
+      '    POSTGRES_SCHEMA=dev\n\n' +
+      'y prepara esa réplica una sola vez:\n' +
+      '    npm run db:migrate\n' +
+      '    npm run db:seed -- --demo\n\n' +
+      'Si de verdad quieres mirar producción desde local, ponlo explícito:\n' +
+      '    POSTGRES_SCHEMA=public',
+  )
+}
 
 const globalRef = globalThis as unknown as { __slSql?: Sql }
 
 function client(): Sql {
   if (!globalRef.__slSql) {
+    // Va aquí y no en la carga del módulo: el build de producción importa este
+    // archivo sin consultar nada, y reventar ahí rompería el despliegue.
+    exigirEsquemaExplicitoEnDesarrollo()
     // Una línea al abrir la conexión, no en cada consulta. Trabajar sin saber
     // contra qué base se escribe es exactamente como se acaba sembrando datos
     // de mentira en producción.

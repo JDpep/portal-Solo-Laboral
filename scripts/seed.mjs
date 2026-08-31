@@ -16,7 +16,7 @@
 import { randomBytes, scrypt as scryptCb } from 'node:crypto'
 import { promisify } from 'node:util'
 import postgres from 'postgres'
-import { loadEnv } from './env.mjs'
+import { loadEnv, resolverEsquema } from './env.mjs'
 
 loadEnv()
 
@@ -138,13 +138,7 @@ if (!url) {
  * modo que sembrar y leer no pueden apuntar a sitios distintos. `--schema` gana
  * cuando hace falta ser explícito.
  */
-const schemaFlag = process.argv.indexOf('--schema')
-const schema =
-  schemaFlag !== -1 ? process.argv[schemaFlag + 1] : (process.env.POSTGRES_SCHEMA ?? 'public')
-if (!/^[a-z_][a-z0-9_]*$/.test(schema)) {
-  console.error(`Nombre de esquema inválido: ${schema}`)
-  process.exit(1)
-}
+const schema = resolverEsquema(process.argv, 'db:seed')
 
 const sql = postgres(url, {
   prepare: false,
@@ -180,7 +174,11 @@ try {
       `
       console.log(`  creada      ${account.email}  (${account.role})`)
     }
-    console.log(`              contraseña: ${DEMO_PASSWORD}`)
+    // La contraseña NO se imprime. Estas cuentas entran al portal real, y el
+    // sitio donde acaba lo que se escribe aquí —el historial de la terminal, el
+    // registro de un CI, una captura pegada en un chat— no lo controla nadie.
+    // Quien la necesite ya la tiene: es la que él mismo puso en .env.local.
+    console.log('              contraseña: la de SEED_DEMO_PASSWORD en .env.local')
   }
 
   for (const email of LEGACY_EMAILS) {
