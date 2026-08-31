@@ -1,20 +1,21 @@
 /**
  * EL TEXTO DE LOS AVISOS AL DESPACHO.
  *
- * Puro y aparte del envío, para poder probarlo sin tocar un buzón. Lo que aquí
- * se decide no es estética: es qué ve alguien en la pantalla de bloqueo de su
- * teléfono cuando entra un caso.
+ * Puro y AJENO AL TRANSPORTE, para poder probarlo sin enviar nada. Sirve igual
+ * para un WhatsApp que para cualquier otro canal: los dos son texto plano y en
+ * los dos la primera línea es lo único que se lee en la notificación.
  *
  * DOS PRINCIPIOS:
  *
- *  · El ASUNTO tiene que bastar. Se lee en la notificación, de pie, entre dos
- *    cosas. Por eso lleva el nombre y —cuando corre prisa— empieza diciendo que
- *    corre prisa, en vez de un "Nuevo lead" que obliga a abrir para saber si hay
- *    que moverse.
+ *  · El TITULAR tiene que bastar. Se lee en la pantalla de bloqueo, de pie,
+ *    entre dos cosas. Por eso lleva el nombre y —cuando corre prisa— empieza
+ *    diciendo que corre prisa, en vez de un "Nuevo lead" que obliga a abrir para
+ *    saber si hay que moverse.
  *
  *  · El CUERPO lleva lo justo para actuar: a quién llamar y a qué número. Meter
- *    el relato del despido en un correo sería sacar de la base datos sensibles
- *    hacia buzones que nadie administra; para eso está el portal, y va enlazado.
+ *    el relato del despido en un mensaje sería sacar el dato más sensible del
+ *    expediente hacia un teléfono que nadie administra —y un WhatsApp enviado no
+ *    se recoge—. Para eso está el portal, y va enlazado.
  *
  * NO se promete nada que el despacho no haya decidido: "cumple los criterios",
  * nunca "caso aceptado". Es el mismo cuidado que en el mensaje al prospecto.
@@ -35,8 +36,9 @@ export interface AvisoLead {
 }
 
 export interface Aviso {
-  subject: string
-  text: string
+  /** Primera línea: lo único que se ve sin abrir la notificación. */
+  titular: string
+  cuerpo: string
 }
 
 function pie(url: string, leadId: string): string {
@@ -61,8 +63,8 @@ export function avisoCasoCalificado(
   siteUrl: string,
 ): Aviso {
   return {
-    subject: `Caso calificado: ${lead.fullName}`,
-    text:
+    titular: `Caso calificado: ${lead.fullName}`,
+    cuerpo:
       `Entró una solicitud que cumple los criterios iniciales de revisión.\n\n` +
       `${ficha(lead)}\n\n` +
       `${lead.description ? 'Escribió una descripción; está en el portal.' : 'No escribió descripción: conviene preguntarlo en la llamada.'}` +
@@ -85,8 +87,8 @@ export function avisoLlamadaInmediata(
   minutos: number,
 ): Aviso {
   return {
-    subject: `LLAMAR AHORA (${minutos} min): ${lead.fullName} · ${formatPhone(lead.phone)}`,
-    text:
+    titular: `LLAMAR AHORA (${minutos} min): ${lead.fullName} · ${formatPhone(lead.phone)}`,
+    cuerpo:
       `Pidió que le llamaran en los próximos ${minutos} minutos y la pantalla se lo prometió.\n\n` +
       `${ficha(lead)}` +
       pie(siteUrl, leadId),
@@ -102,8 +104,8 @@ export function avisoLlamadaAgendada(
   hora: string,
 ): Aviso {
   return {
-    subject: `Llamada pedida para ${formatDate(dia)} ${hora} · ${lead.fullName}`,
-    text:
+    titular: `Llamada pedida para ${formatDate(dia)} ${hora} · ${lead.fullName}`,
+    cuerpo:
       `Pidió que le llamaran el ${formatDateLong(dia)} a las ${hora}.\n` +
       `Es una preferencia del prospecto, no una cita confirmada por el despacho.\n\n` +
       `${ficha(lead)}` +

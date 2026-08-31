@@ -165,26 +165,27 @@ SOLO_LABORAL_WHATSAPP_NUMBER=   # 52 + 10 dígitos. SIN ESTO la opción de
 WHATSAPP_MESSAGE_TEMPLATE=      # opcional; por defecto, la plantilla neutra
 QUICK_CALL_MIN_DELAY=10         # ventana de la llamada próxima, en minutos
 QUICK_CALL_MAX_DELAY=15
-
-RESEND_API_KEY=                 # avisos al despacho. SIN LAS TRES no se avisa
-MAIL_FROM=                      # "Avisos <avisos@dominio-verificado.mx>"
-ALERTA_DESTINOS=                # destinatarios, separados por coma
-SITE_URL=                       # para los enlaces dentro del correo
 ```
 
-### Avisos al despacho
+### Avisos al despacho — pendientes de canal
 
-Cuando entra un caso que pasa el filtro sale un correo, y cuando alguien pide
-que le llamen **en los próximos minutos** sale otro con el asunto en
-imperativo: la pantalla acaba de prometerle una llamada a esa persona, y hasta
-ahora esa promesa no la recibía nadie.
+Un caso calificado aparece en `/portal` y ya. Si nadie abre el portal, nadie se
+entera, y desde que existe «que me llamen en los próximos 10 a 15 minutos» la
+pantalla promete un plazo corto que hoy no recibe nadie.
 
-Todo es «mejor esfuerzo». Si falta la clave, si el buzón falla o si Resend
-tarda, la solicitud **se guarda igual**: el formulario es la puerta de entrada
-de alguien que acaba de perder su trabajo, y perder su caso por un problema de
-correo sería el peor fallo posible. El correo lleva lo justo para actuar —a
-quién llamar y a qué número— y **no** el relato del despido: para eso está el
-enlace al portal.
+El canal del despacho es **WhatsApp**, y ahí está el trabajo pendiente: los
+enlaces `wa.me` que ya existen los abre el prospecto —conversación iniciada por
+él, sin API—, mientras que un aviso lo inicia el negocio y eso exige la
+WhatsApp Business Platform con una **plantilla aprobada por Meta**, cuenta de
+Meta Business y un número dedicado (un número dado de alta en la API deja de
+servir en la app normal, así que conviene uno nuevo y no tocar el que ya reciben
+de los prospectos).
+
+Lo que ya está hecho: los tres momentos enganchados
+(`src/app/solicitud/actions.ts`) y el contenido decidido y probado
+(`src/lib/domain/aviso-texto.ts`) — lleva a quién llamar y a qué número, **no**
+el relato del despido. Falta escribir el transporte en
+`src/lib/avisos/notificar.ts`, que hoy no hace nada.
 
 ---
 

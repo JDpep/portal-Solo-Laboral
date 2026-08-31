@@ -36,7 +36,7 @@ import {
   avisarCasoCalificado,
   avisarLlamadaAgendada,
   avisarLlamadaInmediata,
-} from '@/lib/mail/avisos'
+} from '@/lib/avisos/notificar'
 import { parseCallPreference } from '@/lib/domain/call-time'
 import { EMPTY_LEAD_VALUES, parseLeadForm, readLeadValues } from '@/lib/domain/lead-form'
 import { HONEYPOT_FIELD, toUnqualifiedReason } from '@/lib/domain/lead-submission'
