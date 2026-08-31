@@ -33,6 +33,12 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 export interface EventState {
   error?: string
   ok?: string
+  /**
+   * Sello de este resultado. La pantalla lo usa para saber que hubo un guardado
+   * NUEVO: dos actividades seguidas devuelven el mismo `ok` y sin algo que
+   * cambie, el popover no se enteraría del segundo y se quedaría abierto.
+   */
+  token?: number
 }
 
 /**
@@ -82,7 +88,7 @@ export async function createEventAction(
 
   revalidatePath('/portal/calendario')
   if (caseId) revalidatePath(`/portal/seguimiento/${caseId}`)
-  return { ok: 'Actividad agendada.' }
+  return { ok: 'Actividad agendada.', token: Date.now() }
 }
 
 export async function setEventDoneAction(formData: FormData): Promise<void> {

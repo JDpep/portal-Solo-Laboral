@@ -267,3 +267,72 @@ export function formatSubmittedAt(iso: string, reference: PlainDate = today()): 
   if (delta === 1) return `Ayer · ${time}`
   return `${formatDate(day)} · ${time}`
 }
+
+// ─────────────────────────────────────────── rejilla por horas (semana y día)
+
+/**
+ * Minutos transcurridos desde la medianoche DEL DESPACHO.
+ *
+ * Es la coordenada vertical de la rejilla de semana y día: un evento que
+ * empieza a las 7:30 se pinta a 450 minutos del borde superior. Se resuelve en
+ * la zona del despacho y no en la del servidor por la misma razón de siempre —
+ * una audiencia guardada como instante UTC saldría corrida en la rejilla si la
+ * función corriera en Virginia.
+ */
+export function minutesOfDay(iso: string, timeZone = FIRM_TIME_ZONE): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(new Date(iso))
+  const read = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? '0')
+  // Algunas versiones de ICU formatean la medianoche como "24".
+  return (read('hour') % 24) * 60 + read('minute')
+}
+
+/** 450 -> "07:30". El formato que entiende un <input type="time">. */
+export function timeFromMinutes(minutes: number): string {
+  const clamped = Math.max(0, Math.min(24 * 60 - 1, Math.round(minutes)))
+  const h = Math.floor(clamped / 60)
+  const m = clamped % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/** "07:30" -> 450. */
+export function minutesFromTime(time: string): number {
+  const [h, m] = time.split(':').map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return 0
+  return h * 60 + m
+}
+
+/** "lun" — el encabezado de una columna de la semana. */
+export function weekdayShort(value: PlainDate): string {
+  return new Intl.DateTimeFormat('es-MX', { timeZone: 'UTC', weekday: 'short' })
+    .format(new Date(toEpochDay(value)))
+    .replace('.', '')
+}
+
+/**
+ * El título de una semana: "25 – 31 de agosto de 2026".
+ *
+ * Se recorta lo que se repite. Cuando la semana parte dos meses el mes viaja en
+ * los dos extremos ("31 de agosto – 6 de septiembre de 2026") y cuando parte
+ * dos años, también el año.
+ */
+export function formatWeekRange(monday: PlainDate): string {
+  const sunday = addDays(monday, 6)
+  const dayOf = (value: PlainDate) => String(Number(value.slice(8, 10)))
+  const dayMonth = (value: PlainDate) =>
+    new Intl.DateTimeFormat('es-MX', { timeZone: 'UTC', day: 'numeric', month: 'long' }).format(
+      new Date(toEpochDay(value)),
+    )
+
+  if (monday.slice(0, 7) === sunday.slice(0, 7)) {
+    return `${dayOf(monday)} – ${dayOf(sunday)} de ${formatMonthLong(monday)}`
+  }
+  if (monday.slice(0, 4) === sunday.slice(0, 4)) {
+    return `${dayMonth(monday)} – ${dayMonth(sunday)} de ${monday.slice(0, 4)}`
+  }
+  return `${dayMonth(monday)} de ${monday.slice(0, 4)} – ${dayMonth(sunday)} de ${sunday.slice(0, 4)}`
+}
