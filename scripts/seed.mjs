@@ -126,8 +126,35 @@ if (!url) {
   process.exit(1)
 }
 
-const sql = postgres(url, { prepare: false, onnotice: () => {} })
+/**
+ * EN QUÉ ESQUEMA se siembra.
+ *
+ * Antes no se elegía: la conexión salía con el `search_path` por omisión y todo
+ * caía en `public`, es decir, en producción. Bastaba con arrancar el portal en
+ * local para tener el servidor de desarrollo escribiendo sobre los datos del
+ * despacho, y `npm run db:seed` sembrando ahí cuentas y solicitudes de mentira.
+ *
+ * Ahora sigue a POSTGRES_SCHEMA, la misma variable que lee la aplicación, de
+ * modo que sembrar y leer no pueden apuntar a sitios distintos. `--schema` gana
+ * cuando hace falta ser explícito.
+ */
+const schemaFlag = process.argv.indexOf('--schema')
+const schema =
+  schemaFlag !== -1 ? process.argv[schemaFlag + 1] : (process.env.POSTGRES_SCHEMA ?? 'public')
+if (!/^[a-z_][a-z0-9_]*$/.test(schema)) {
+  console.error(`Nombre de esquema inválido: ${schema}`)
+  process.exit(1)
+}
+
+const sql = postgres(url, {
+  prepare: false,
+  onnotice: () => {},
+  connection: { search_path: `${schema}, extensions` },
+})
 const withDemo = process.argv.includes('--demo')
+
+console.log(`
+ESQUEMA  ${schema}${schema === 'public' ? '  (PRODUCCIÓN)' : ''}`)
 
 try {
   console.log('\nCUENTAS')

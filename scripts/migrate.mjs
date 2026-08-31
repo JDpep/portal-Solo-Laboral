@@ -5,13 +5,20 @@
  * queda anotado en `schema_migrations`. Si una migración falla a la mitad, no
  * deja media migración aplicada: o entra entera o no entra (§46, §51).
  *
- *   npm run db:migrate                 aplica lo pendiente en `public`
+ *   npm run db:migrate                 aplica lo pendiente en el esquema de turno
  *   npm run db:migrate -- --dry        solo dice qué falta
  *   npm run db:migrate -- --schema test  crea una copia completa del esquema
  *
- * El esquema `test` es una réplica exacta en la misma base: mismas tablas,
- * mismos triggers, mismas restricciones. Las pruebas de integración corren
- * contra reglas reales de Postgres sin poder rozar un dato del despacho.
+ * QUÉ ESQUEMA por omisión: el de POSTGRES_SCHEMA, que es el mismo que va a leer
+ * la aplicación, y `public` si no está puesto. Así el que trabaja en local con
+ * POSTGRES_SCHEMA=dev no puede migrar producción sin querer mientras su portal
+ * lee otra cosa: migrar y leer apuntan siempre al mismo sitio. En Vercel la
+ * variable no existe, de modo que el despliegue sigue migrando `public`.
+ *
+ * Los esquemas `test` y `dev` son réplicas exactas en la misma base: mismas
+ * tablas, mismos triggers, mismas restricciones. Las pruebas de integración y el
+ * servidor de desarrollo corren contra reglas reales de Postgres sin poder rozar
+ * un dato del despacho.
  *
  * Usa la conexión SIN pooler (puerto 5432): el pooler en modo transacción no
  * admite el DDL con estado entre sentencias que hacen algunas migraciones.
@@ -34,7 +41,8 @@ if (!url) {
 
 const dryRun = process.argv.includes('--dry')
 const schemaFlag = process.argv.indexOf('--schema')
-const schema = schemaFlag !== -1 ? process.argv[schemaFlag + 1] : 'public'
+const schema =
+  schemaFlag !== -1 ? process.argv[schemaFlag + 1] : (process.env.POSTGRES_SCHEMA ?? 'public')
 if (!/^[a-z_][a-z0-9_]*$/.test(schema)) {
   console.error(`Nombre de esquema inválido: ${schema}`)
   process.exit(1)

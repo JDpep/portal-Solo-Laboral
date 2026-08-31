@@ -85,9 +85,30 @@ nada.
 ```bash
 npm install
 cp .env.example .env.local     # y rellena la conexión a Postgres
-npm run db:migrate             # crea el esquema
+echo 'POSTGRES_SCHEMA=dev' >> .env.local   # NO trabajes contra producción
+npm run db:migrate             # crea el esquema (el de POSTGRES_SCHEMA)
 npm run db:seed -- --demo      # cuentas de demostración + ejemplos
 npm run dev                    # http://localhost:3000
+```
+
+### Desarrollo NO toca los datos del despacho
+
+`POSTGRES_SCHEMA=dev` es la línea que separa tu servidor de desarrollo de los
+datos reales. Sin ella, `next dev` abre la conexión en `public` —producción— y
+cualquier cosa que pruebes en el portal queda escrita en la agenda del despacho.
+
+`dev` es una **réplica completa** del esquema dentro de la misma base: mismas
+tablas, mismos triggers, mismas restricciones, ni un dato real. `db:migrate` y
+`db:seed` siguen esa misma variable, de modo que migrar, sembrar y leer no
+pueden acabar apuntando a sitios distintos; `--schema` los fuerza cuando hace
+falta ser explícito. Al abrir la conexión, el servidor imprime contra qué
+esquema trabaja siempre que no sea `public`.
+
+Vercel no define la variable, así que **el portal desplegado siempre sale en
+`public`**. Para tocar producción a propósito desde la línea de comandos:
+
+```bash
+POSTGRES_SCHEMA=public npm run db:migrate -- --dry   # qué le falta a producción
 ```
 
 `db:seed` deja dos cuentas de **demostración** —`Admin@SL.mx` (rol `admin`) y
@@ -105,8 +126,8 @@ propias.
 ```bash
 npm run typecheck    # tsc --noEmit
 npm run lint
-npm test             # 59 pruebas puras: motor, fechas, mensajes, validación
-npm run test:db      # 52 de integración contra Postgres real (esquema `test`)
+npm test             # 87 pruebas puras: motor, fechas, agenda, mensajes, validación
+npm run test:db      # 117 de integración contra Postgres real (esquema `test`)
 npm run build
 ```
 
@@ -121,6 +142,9 @@ se deja reescribir— sin poder rozar un dato del despacho.
 SESSION_SECRET=...              # obligatorio en producción; el portal no arranca sin él
 POSTGRES_URL=...                # pooler (6543): la conexión de la aplicación
 POSTGRES_URL_NON_POOLING=...    # sesión (5432): migraciones y scripts
+POSTGRES_SCHEMA=dev             # SOLO en local. Réplica del esquema: desarrollo
+                                # no escribe sobre los datos del despacho.
+                                # En Vercel no se define: producción es `public`
 
 SOLO_LABORAL_WHATSAPP_NUMBER=   # 52 + 10 dígitos. SIN ESTO la opción de
                                 # WhatsApp no se ofrece — nunca un botón roto

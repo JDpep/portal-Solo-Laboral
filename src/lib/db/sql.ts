@@ -33,9 +33,13 @@ function connectionString(): string {
 }
 
 /**
- * Esquema de trabajo. `public` en la aplicación; los tests apuntan a `test`,
- * que es una copia completa del esquema en la misma base: mismas reglas,
- * mismos triggers, mismas restricciones, sin tocar un solo dato real.
+ * Esquema de trabajo. `public` es producción; `test` y `dev` son copias
+ * completas del esquema en la misma base —mismas reglas, mismos triggers,
+ * mismas restricciones— sobre las que se puede escribir sin rozar un dato real.
+ *
+ * Vercel no define la variable, así que el portal desplegado siempre sale en
+ * `public`. Quien trabaja en local pone POSTGRES_SCHEMA=dev en su .env.local y
+ * su servidor de desarrollo deja de escribir sobre los datos del despacho.
  */
 const SCHEMA = process.env.POSTGRES_SCHEMA ?? 'public'
 
@@ -43,6 +47,12 @@ const globalRef = globalThis as unknown as { __slSql?: Sql }
 
 function client(): Sql {
   if (!globalRef.__slSql) {
+    // Una línea al abrir la conexión, no en cada consulta. Trabajar sin saber
+    // contra qué base se escribe es exactamente como se acaba sembrando datos
+    // de mentira en producción.
+    if (SCHEMA !== 'public') {
+      console.log(`[db] esquema «${SCHEMA}» — copia de trabajo, no es producción`)
+    }
     globalRef.__slSql = postgres(connectionString(), {
       // El pooler en modo transacción no conserva sentencias preparadas.
       prepare: false,
