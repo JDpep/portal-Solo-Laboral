@@ -53,13 +53,38 @@ export function clearSessionCookie(): void {
   cookies().set(COOKIE_NAME, '', { httpOnly: true, path: '/', maxAge: 0 })
 }
 
-/** Usuario autenticado, o null. Una cuenta inactiva NO tiene sesión válida. */
+/**
+ * Usuario autenticado, o null.
+ *
+ * Una cuenta inactiva NO tiene sesión válida, y tampoco la tiene una cookie
+ * emitida ANTES del último cambio de contraseña: cambiarla es lo que se hace
+ * para cortarle el paso a alguien, así que tiene que cortárselo de verdad y no
+ * dentro de doce horas. Quien cambia la suya recibe una cookie nueva en el
+ * mismo momento, de modo que el único que se cae es el otro.
+ *
+ * El margen de un segundo absorbe que la cookie y el sello los ponen relojes
+ * distintos —el de la función y el de Postgres—: sin él, cambiar la contraseña
+ * podría cerrarte tu propia sesión recién emitida.
+ */
 export async function getCurrentUser(): Promise<PublicStaffUser | null> {
   const token = decodeSession(cookies().get(COOKIE_NAME)?.value)
   if (!token) return null
   const user = await findUserById(token.userId)
   if (!user || user.status !== 'active') return null
+  if (sessionRevoked(token, user.passwordChangedAt)) return null
   return toPublicUser(user)
+}
+
+const RELOJ_MARGEN_MS = 1000
+
+export function sessionRevoked(
+  token: SessionToken,
+  passwordChangedAt: string | null,
+): boolean {
+  if (!passwordChangedAt) return false
+  const cambiada = new Date(passwordChangedAt).getTime()
+  if (Number.isNaN(cambiada)) return false
+  return token.issuedAt + RELOJ_MARGEN_MS < cambiada
 }
 
 /** IP del cliente, para los límites de intentos. */

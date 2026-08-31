@@ -70,6 +70,7 @@ Sin IA. Regla determinística, del lado del servidor, en
 | `/portal/seguimiento/[id]` | Ruta del caso, paso a paso | Requiere sesión |
 | `/portal/calendario` | Agenda operativa | Requiere sesión · en construcción |
 | `/portal/historico` | Casos cerrados y métricas | Requiere sesión · en construcción |
+| `/portal/cuenta` | Mi cuenta: cambiar mi propia contraseña | Requiere sesión |
 | `/portal/administracion` | Cuentas y plantillas | Requiere rol `admin` · en construcción |
 
 **LEAD y CASO son cosas distintas.** Un lead es alguien que escribió y está
@@ -114,6 +115,12 @@ Vercel no define la variable, así que **el portal desplegado siempre sale en
 POSTGRES_SCHEMA=public npm run db:migrate -- --dry   # qué le falta a producción
 ```
 
+Las cuentas se entregan con una contraseña **temporal** y cada quien la cambia
+por la suya en `/portal/cuenta`. Cambiarla **cierra las demás sesiones abiertas**
+con esa cuenta (columna `password_changed_at`, migración 0008): si no las
+cerrara, quien hubiera visto la temporal por el camino seguiría dentro hasta
+doce horas después del cambio.
+
 `db:seed` **no imprime la contraseña**: estas cuentas entran al portal real y el
 historial de una terminal, el registro de un CI o una captura pegada en un chat
 no los controla nadie. Quien la necesite ya la tiene, en su `.env.local`.
@@ -133,7 +140,7 @@ propias.
 ```bash
 npm run typecheck    # tsc --noEmit
 npm run lint
-npm test             # 87 pruebas puras: motor, fechas, agenda, mensajes, validación
+npm test             # 92 pruebas puras: motor, fechas, agenda, mensajes, validación
 npm run test:db      # 117 de integración contra Postgres real (esquema `test`)
 npm run build
 ```

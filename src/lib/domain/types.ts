@@ -39,6 +39,11 @@ export interface StaffUser {
   status: 'active' | 'inactive'
   createdAt: string
   lastLoginAt: string | null
+  /**
+   * Último cambio de contraseña. Toda sesión emitida antes deja de valer, que
+   * es lo que convierte el cambio en una revocación de verdad.
+   */
+  passwordChangedAt: string | null
   /** Hash scrypt. Nunca sale del servidor. */
   passwordHash: string | null
 }

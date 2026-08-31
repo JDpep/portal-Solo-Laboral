@@ -43,9 +43,18 @@ export function PortalShell({
             <SidebarNav role={user.role} />
 
             <div className="mt-auto border-t border-sl-border pt-4">
-              <p className="px-3 text-sm font-medium text-sl-text">{user.name}</p>
-              <p className="px-3 text-xs text-sl-muted">{ROLE_LABEL[user.role]}</p>
-              <form action={logoutAction} className="mt-2">
+              {/* El bloque de quién eres es también la puerta a tu cuenta: es
+                  donde se busca, y ahorra un elemento más en la navegación. */}
+              <Link
+                href="/portal/cuenta"
+                className="block rounded-sl px-3 py-1.5 transition-colors hover:bg-sl-primary-soft/60"
+              >
+                <span className="block text-sm font-medium text-sl-text">{user.name}</span>
+                <span className="block text-xs text-sl-muted">
+                  {ROLE_LABEL[user.role]} · Mi cuenta
+                </span>
+              </Link>
+              <form action={logoutAction} className="mt-1">
                 <button type="submit" className="sl-btn-ghost w-full justify-start px-3">
                   <LogOut className="h-4 w-4" aria-hidden />
                   Cerrar sesión
@@ -64,13 +73,18 @@ export function PortalShell({
 
                 <div className="ml-auto flex items-center gap-2">
                   {/* El nombre no cabe; las iniciales sí, y bastan para
-                      confirmar con qué cuenta se está viendo el portal. */}
-                  <span
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-sl-primary-soft text-xs font-semibold text-sl-primary"
+                      confirmar con qué cuenta se está viendo el portal. Y ya que
+                      son lo único que representa al usuario aquí, llevan a su
+                      cuenta: en el teléfono no hay barra lateral desde donde
+                      llegar. */}
+                  <Link
+                    href="/portal/cuenta"
+                    aria-label={`Mi cuenta · ${user.name}`}
                     title={`${user.name} · ${ROLE_LABEL[user.role]}`}
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-sl-primary-soft text-xs font-semibold text-sl-primary transition-colors hover:bg-sl-primary hover:text-white"
                   >
                     {initials(user.name)}
-                  </span>
+                  </Link>
                   <form action={logoutAction}>
                     <button type="submit" className="sl-btn-ghost px-2.5" aria-label="Cerrar sesión">
                       <LogOut className="h-4 w-4" aria-hidden />

@@ -20,6 +20,7 @@ function rowToUser(row: Row): StaffUser {
     status: row.status,
     createdAt: isoRequired(row.created_at),
     lastLoginAt: iso(row.last_login_at),
+    passwordChangedAt: iso(row.password_changed_at ?? null),
     passwordHash: row.password_hash ?? null,
   }
 }
@@ -152,9 +153,13 @@ export async function setUserPassword(
   actorId: string,
 ): Promise<PublicStaffUser | null> {
   if (!isUuid(id)) return null
+  // El sello va en la misma sentencia que el hash: si se escribieran por
+  // separado, un fallo entre las dos dejaría la contraseña cambiada y las
+  // sesiones viejas intactas —justo el estado que este campo viene a impedir.
   const rows = await db()`
-    UPDATE staff_users SET password_hash = ${passwordHash}
-    WHERE id = ${id}::uuid RETURNING *
+    UPDATE staff_users
+       SET password_hash = ${passwordHash}, password_changed_at = now()
+     WHERE id = ${id}::uuid RETURNING *
   `
   if (!rows.length) return null
   await recordAudit({
