@@ -53,8 +53,11 @@ export function Bar({
   total,
   href,
   active = false,
+  valueLabel,
 }: {
   label: React.ReactNode
+  /** Cómo se escribe la cifra, si no es un conteo (p. ej. un monto en pesos). */
+  valueLabel?: React.ReactNode
   value: number
   total: number
   href?: string
@@ -68,7 +71,7 @@ export function Bar({
           {label}
         </span>
         <span className="whitespace-nowrap text-xs tabular-nums text-sl-muted">
-          {value} · {percent}%
+          {valueLabel ?? value} · {percent}%
         </span>
       </span>
       <span className="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-sl-primary-soft">

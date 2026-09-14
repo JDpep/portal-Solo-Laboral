@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import clsx from 'clsx'
-import { CalendarDays, ClipboardList, History, Inbox, Users } from 'lucide-react'
+import { CalendarDays, ClipboardList, Handshake, History, Inbox, Users } from 'lucide-react'
 import type { StaffRole } from '@/lib/domain/types'
 
 /**
@@ -23,6 +23,7 @@ const ITEMS = [
   { href: '/portal/seguimiento', label: 'Seguimiento', icon: ClipboardList },
   { href: '/portal/calendario', label: 'Calendario', icon: CalendarDays },
   { href: '/portal/historico', label: 'Histórico', icon: History },
+  { href: '/portal/convenios', label: 'Convenios', icon: Handshake },
 ] as const
 
 const ADMIN_ITEMS = [{ href: '/portal/administracion', label: 'Administración', icon: Users }] as const

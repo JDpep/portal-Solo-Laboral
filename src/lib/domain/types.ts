@@ -308,6 +308,51 @@ export interface AgendaEvent extends CalendarEvent {
   isDemo: boolean
 }
 
+// ──────────────────────────────────────────────────────────────── convenios
+
+/**
+ * Convenio con el patrón. Montos en CENTAVOS enteros y porcentaje en puntos
+ * base (3500 = 35 %): ver src/lib/domain/convenio.ts.
+ */
+export interface Settlement {
+  id: Id
+  caseId: Id
+  lawyerId: Id
+  signedOn: PlainDate
+  agreedAmountCents: number
+  feeRateBp: number
+  /** Lo calcula la base; nunca se escribe a mano. */
+  feeAmountCents: number
+  feeCollectedAt: string | null
+  notes: string
+  status: 'active' | 'voided'
+  voidedAt: string | null
+  voidReason: string
+  createdBy: Id | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Lo que necesita una fila de la lista: el convenio con su caso y su abogado. */
+export interface SettlementSummary extends Settlement {
+  folio: string
+  clientName: string
+  lawyerName: string
+  isDemo: boolean
+  fileCount: number
+}
+
+/** Metadatos de un documento. Los bytes nunca viajan con esto. */
+export interface SettlementFile {
+  id: Id
+  settlementId: Id
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+  uploadedAt: string
+  uploadedByName: string | null
+}
+
 // ──────────────────────────────────────────────────────────────── historia
 
 export interface CaseStatusChange {
@@ -357,6 +402,12 @@ export type AuditAction =
   | 'template_item_retire'
   | 'template_item_restore'
   | 'template_item_move'
+  | 'settlement_create'
+  | 'settlement_update'
+  | 'settlement_void'
+  | 'settlement_file_add'
+  | 'settlement_fee_collected'
+  | 'settlement_fee_uncollected'
 
 export interface AuditEntry {
   id: Id

@@ -3,6 +3,15 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   /*
+   * Los convenios suben el documento firmado por una server action, y Next
+   * corta el cuerpo en 1 MB por omisión: un PDF escaneado no pasaba. El tope
+   * real lo pone Vercel (4.5 MB por petición); la aplicación admite 4 MB por
+   * archivo y lo avisa en el formulario antes de enviar.
+   */
+  experimental: {
+    serverActions: { bodySizeLimit: '4.5mb' },
+  },
+  /*
    * La puerta del despacho se escribe /acceso, en singular. Quien la teclea en
    * plural (o con los nombres que uno espera de un login) llegaba a un 404 sin
    * pista de a dónde ir. Estas redirecciones son permanentes porque la ruta

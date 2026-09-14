@@ -17,6 +17,7 @@ export async function resetDb(): Promise<void> {
   const sql = db()
   await sql.unsafe(`
     TRUNCATE audit_logs, case_status_history, calendar_events,
+             settlement_files, settlements,
              case_checklist_items, cases, leads, staff_users
     RESTART IDENTITY CASCADE
   `)

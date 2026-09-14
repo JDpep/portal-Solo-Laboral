@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, CalendarClock, MessageCircle, Phone, RotateCcw } from 'lucide-react'
+import { ArrowLeft, CalendarClock, ChevronRight, Handshake, MessageCircle, Phone, Plus, RotateCcw } from 'lucide-react'
 import { requireStaff } from '@/lib/auth/guard'
 import { findCaseById, listStatusHistory } from '@/lib/db/cases'
 import { listChecklist, currentStepOf, progressOf } from '@/lib/db/checklist'
 import { listEventsForCase } from '@/lib/db/events'
 import { listActiveUsers } from '@/lib/db/users'
+import { listSettlementsForCase } from '@/lib/db/settlements'
+import { formatMoney, formatRate } from '@/lib/domain/convenio'
 import { assignCaseAction, reopenCaseAction, setCaseStatusAction } from '@/app/portal/seguimiento/actions'
 import { formatDate, formatDateLong, formatDateTime } from '@/lib/dates'
 import { formatPhone, telHref, whatsappHref } from '@/lib/domain/phone'
@@ -52,11 +54,12 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
   if (!detail) notFound()
 
   const { case: kase, lead, assignedUserName } = detail
-  const [items, users, history, events] = await Promise.all([
+  const [items, users, history, events, settlements] = await Promise.all([
     listChecklist(kase.id),
     listActiveUsers(),
     listStatusHistory(kase.id),
     listEventsForCase(kase.id),
+    listSettlementsForCase(kase.id),
   ])
   const progress = progressOf(items)
   const closed = !OPEN_CASE_STATUSES.includes(kase.status)
@@ -315,6 +318,55 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
       <div className="mt-5">
         <CaseRoute caseId={kase.id} items={items} users={users} readOnly={closed} />
       </div>
+
+      {/* ─────────────────────────────── convenios ────────────────────────── */}
+      <section className="sl-card mt-5 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-sl-border px-5 py-3.5">
+          <h2 className="sl-eyebrow flex items-center gap-1.5">
+            <Handshake className="h-3.5 w-3.5" aria-hidden />
+            Convenios
+          </h2>
+          <Link href={`/portal/convenios/nuevo?caso=${kase.id}`} className="sl-btn-secondary py-1.5 text-sm">
+            <Plus className="h-4 w-4" aria-hidden />
+            Registrar convenio
+          </Link>
+        </div>
+        {settlements.length > 0 ? (
+          <ul className="divide-y divide-sl-border">
+            {settlements.map((s) => (
+              <li key={s.id}>
+                <Link
+                  href={`/portal/convenios/${s.id}`}
+                  className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 transition-colors hover:bg-sl-background ${s.status === 'voided' ? 'opacity-60' : ''}`}
+                >
+                  <span className="text-sm text-sl-muted">{formatDate(s.signedOn)}</span>
+                  <span className="text-sm tabular-nums text-sl-text">
+                    Acordado {formatMoney(s.agreedAmountCents)}
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums text-sl-primary">
+                    Solo Laboral {formatMoney(s.feeAmountCents)}{' '}
+                    <span className="font-normal text-sl-muted">({formatRate(s.feeRateBp)})</span>
+                  </span>
+                  <span className="ml-auto flex items-center gap-2">
+                    {s.status === 'voided' ? (
+                      <Badge tone="warning">Anulado</Badge>
+                    ) : s.feeCollectedAt ? (
+                      <Badge tone="success">Cobrado</Badge>
+                    ) : (
+                      <Badge tone="info">Por cobrar</Badge>
+                    )}
+                    <ChevronRight className="h-4 w-4 text-sl-muted" aria-hidden />
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-5 py-4 text-sm text-sl-muted">
+            Si el caso termina en convenio con el patrón, regístralo aquí con el documento firmado.
+          </p>
+        )}
+      </section>
 
       {/* ─────────────────────────── agenda de este caso ──────────────────── */}
       {events.length > 0 ? (

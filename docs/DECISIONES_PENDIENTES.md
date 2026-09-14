@@ -325,6 +325,30 @@ ventana que valga.
 
 ---
 
+### 17. Convenios: quién ve qué, y el 35 %
+
+**Pedido (2026-09-14):** que los abogados carguen sus convenios, lo acordado
+con el patrón y el porcentaje de Solo Laboral, que cobra **35 % sobre lo
+acordado con el patrón**.
+
+Construido así, con supuestos que conviene confirmar:
+
+- **El 35 % viene puesto pero se puede cambiar** por convenio (con aviso
+  "distinto al 35 % habitual"). Si nunca debe cambiar, se bloquea el campo.
+- **Todo el despacho ve todos los convenios** —igual que ve todos los casos—,
+  con reparto de honorarios por abogado. Corregir, anular y marcar "cobrado"
+  solo lo pueden administración, el abogado del convenio y quien lo capturó.
+  Si un abogado NO debe ver lo de sus colegas, es un filtro en el repositorio.
+- **"Cobrado" lo marca una persona**: el portal no ve pagos ni facturas.
+- **El documento se guarda en la base** (PDF o foto, hasta 4 MB por archivo;
+  Vercel no admite peticiones de más de 4.5 MB). El plan gratuito de Supabase
+  tiene 500 MB: alcanza para unos cientos de convenios escaneados. Si se
+  queda corto, se mueve a un almacenamiento de archivos sin cambiar pantallas.
+- Nada se borra: un convenio mal capturado se **anula con motivo**, y el
+  documento subido no se puede reemplazar ni borrar (se sube otro).
+
+---
+
 ## RESUELTO
 
 ### 10. Identidad visual
