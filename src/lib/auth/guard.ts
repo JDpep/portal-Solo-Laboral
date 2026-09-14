@@ -11,7 +11,7 @@
  */
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth/session'
-import type { PublicStaffUser } from '@/lib/domain/types'
+import { isAdminRole, type PublicStaffUser } from '@/lib/domain/types'
 
 /** Sesión viva o redirección a /acceso. */
 export async function requireStaff(): Promise<PublicStaffUser> {
@@ -28,7 +28,7 @@ export async function requireStaff(): Promise<PublicStaffUser> {
  */
 export async function requireAdmin(): Promise<PublicStaffUser> {
   const user = await requireStaff()
-  if (user.role !== 'admin') redirect('/portal')
+  if (!isAdminRole(user.role)) redirect('/portal')
   return user
 }
 

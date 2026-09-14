@@ -23,13 +23,19 @@ export type Id = string
 /**
  * Miembro del despacho con acceso al portal.
  *
+ *   superadmin  todo lo de admin, y es el único que gestiona cuentas superadmin.
  *   admin   administra cuentas y las plantillas de la ruta del caso.
  *   lawyer  opera: leads, casos, seguimiento y calendario.
  *
  * El rol se comprueba SIEMPRE en el servidor. Esconder un botón no es un
  * permiso: quien escriba la URL a mano tiene que chocar contra la misma pared.
  */
-export type StaffRole = 'admin' | 'lawyer'
+export type StaffRole = 'superadmin' | 'admin' | 'lawyer'
+
+/** Administración del portal: superadmin y admin. */
+export function isAdminRole(role: StaffRole): boolean {
+  return role === 'superadmin' || role === 'admin'
+}
 
 export interface StaffUser {
   id: Id

@@ -8,30 +8,20 @@
  * son uno solo y esto se ejecuta UNA vez. Es idempotente —volver a correrlo no
  * duplica nada— para que sea seguro repetirlo sin pensar.
  *
- * Las dos cuentas de abajo son de DEMOSTRACIÓN, para poder enseñar el portal.
+ * Las cuentas son las de PRUEBAS INTERNAS (scripts/cuentas-pruebas.mjs), para poder enseñar el portal.
  * La contraseña se toma de SEED_DEMO_PASSWORD en .env.local, nunca de aquí.
  * Antes de operar con clientes reales hay que darlas de baja y crear las del
  * despacho con contraseñas propias.
  */
-import { randomBytes, scrypt as scryptCb } from 'node:crypto'
-import { promisify } from 'node:util'
 import postgres from 'postgres'
 import { loadEnv, resolverEsquema } from './env.mjs'
+import { ensureTestAccounts } from './cuentas-pruebas.mjs'
 
 loadEnv()
 
-const scrypt = promisify(scryptCb)
-const KEY_LENGTH = 64
-
-/** Mismo formato que src/lib/auth/password.ts: 'scrypt$sal$hash'. */
-async function hashPassword(password) {
-  const salt = randomBytes(16)
-  const derived = await scrypt(password, salt, KEY_LENGTH)
-  return `scrypt$${salt.toString('hex')}$${derived.toString('hex')}`
-}
 
 /**
- * Compartida por las dos cuentas de demostración.
+ * Compartida por las tres cuentas de pruebas internas.
  *
  * Vive en .env.local —que .gitignore excluye— y NO en este archivo: el
  * repositorio es público y estas cuentas entran al portal de producción, donde
@@ -48,14 +38,9 @@ if (!DEMO_PASSWORD) {
   process.exit(1)
 }
 
-const ACCOUNTS = [
-  { name: 'Administración Solo Laboral', email: 'Admin@SL.mx', role: 'admin' },
-  { name: 'Renata Cárdenas', email: 'User@SL.mx', role: 'lawyer' },
-]
+// Las cuentas son las de pruebas internas: una sola lista, la misma que
+// garantiza cada despliegue (scripts/cuentas-pruebas.mjs).
 
-/** Cuentas de una siembra anterior. No se borran —se llevarían consigo la
- *  autoría de lo que hubieran hecho— pero se dan de baja: inactiva no entra. */
-const LEGACY_EMAILS = ['admin@sololaboral.mx', 'abogados@sololaboral.mx']
 
 /** Los tres últimos reproducen los ejemplos del alcance: fuera de cobertura,
  *  despido viejo, y el límite exacto de 60 días (que NO califica). */
@@ -152,43 +137,8 @@ ESQUEMA  ${schema}${schema === 'public' ? '  (PRODUCCIÓN)' : ''}`)
 
 try {
   console.log('\nCUENTAS')
-  for (const account of ACCOUNTS) {
-    // El hash se rehace en cada corrida: así el script no solo crea la cuenta,
-    // también devuelve una que ya existía a la contraseña de demostración.
-    const passwordHash = await hashPassword(DEMO_PASSWORD)
-    const [existing] = await sql`SELECT id FROM staff_users WHERE email = ${account.email}`
-    if (existing) {
-      await sql`
-        UPDATE staff_users
-        SET name = ${account.name},
-            role = ${account.role}::staff_role,
-            password_hash = ${passwordHash},
-            status = 'active'
-        WHERE id = ${existing.id}
-      `
-      console.log(`  actualizada ${account.email}  (${account.role})`)
-    } else {
-      await sql`
-        INSERT INTO staff_users (name, email, role, password_hash)
-        VALUES (${account.name}, ${account.email}, ${account.role}::staff_role, ${passwordHash})
-      `
-      console.log(`  creada      ${account.email}  (${account.role})`)
-    }
-    // La contraseña NO se imprime. Estas cuentas entran al portal real, y el
-    // sitio donde acaba lo que se escribe aquí —el historial de la terminal, el
-    // registro de un CI, una captura pegada en un chat— no lo controla nadie.
-    // Quien la necesite ya la tiene: es la que él mismo puso en .env.local.
-    console.log('              contraseña: la de SEED_DEMO_PASSWORD en .env.local')
-  }
-
-  for (const email of LEGACY_EMAILS) {
-    const rows = await sql`
-      UPDATE staff_users SET status = 'inactive'
-      WHERE email = ${email} AND status = 'active'
-      RETURNING id
-    `
-    if (rows.length) console.log(`  dada de baja ${email}`)
-  }
+  await ensureTestAccounts(sql, DEMO_PASSWORD)
+  console.log('  contraseña: la de SEED_DEMO_PASSWORD en .env.local')
 
   if (withDemo) {
     console.log('\nSOLICITUDES DE EJEMPLO')

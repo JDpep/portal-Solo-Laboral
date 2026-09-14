@@ -14,9 +14,12 @@ import { FormError, SubmitButton } from '@/components/ui/Form'
 import { Badge } from '@/components/ui/Badge'
 import { ROLE_LABEL } from '@/lib/domain/labels'
 import { formatDateTime } from '@/lib/dates'
-import type { PublicStaffUser, StaffRole } from '@/lib/domain/types'
+import { isAdminRole, type PublicStaffUser, type StaffRole } from '@/lib/domain/types'
 
-const ROLES: StaffRole[] = ['lawyer', 'admin']
+/** Los roles que puede asignar quien está viendo la pantalla. */
+function rolesFor(actorRole: StaffRole): StaffRole[] {
+  return actorRole === 'superadmin' ? ['lawyer', 'admin', 'superadmin'] : ['lawyer', 'admin']
+}
 
 /** El acuse de una acción que salió bien. Sin él, guardar no se distingue de no hacer nada. */
 function Ok({ message }: { message?: string }) {
@@ -44,12 +47,21 @@ function Ok({ message }: { message?: string }) {
  * la autoría de todo lo que esa persona hizo, y la bitácora dejaría de poder
  * reconstruir qué pasó con un caso.
  */
-export function Cuentas({ users, currentUserId }: { users: PublicStaffUser[]; currentUserId: string }) {
+export function Cuentas({
+  users,
+  currentUserId,
+  currentUserRole,
+}: {
+  users: PublicStaffUser[]
+  currentUserId: string
+  currentUserRole: StaffRole
+}) {
+  const ROLES = rolesFor(currentUserRole)
   const [open, setOpen] = useState(false)
   const [state, formAction] = useFormState<AdminState, FormData>(createUserAction, {})
 
   const activos = users.filter((user) => user.status === 'active')
-  const admins = activos.filter((user) => user.role === 'admin')
+  const admins = activos.filter((user) => isAdminRole(user.role))
 
   return (
     <section className="sl-card overflow-hidden">
@@ -136,7 +148,13 @@ export function Cuentas({ users, currentUserId }: { users: PublicStaffUser[]; cu
 
       <ul className="divide-y divide-sl-border">
         {users.map((user) => (
-          <Cuenta key={user.id} user={user} isSelf={user.id === currentUserId} />
+          <Cuenta
+            key={user.id}
+            user={user}
+            isSelf={user.id === currentUserId}
+            roles={ROLES}
+            locked={currentUserRole !== 'superadmin' && user.role === 'superadmin'}
+          />
         ))}
       </ul>
 
@@ -148,7 +166,18 @@ export function Cuentas({ users, currentUserId }: { users: PublicStaffUser[]; cu
   )
 }
 
-function Cuenta({ user, isSelf }: { user: PublicStaffUser; isSelf: boolean }) {
+function Cuenta({
+  user,
+  isSelf,
+  roles: ROLES,
+  locked,
+}: {
+  user: PublicStaffUser
+  isSelf: boolean
+  roles: StaffRole[]
+  /** Cuenta superadmin vista por un admin: se ve, no se toca. */
+  locked: boolean
+}) {
   const [edit, updateAction] = useFormState<AdminState, FormData>(updateUserAction, {})
   const [pass, passAction] = useFormState<AdminState, FormData>(setPasswordAction, {})
   const [status, statusAction] = useFormState<AdminState, FormData>(setUserStatusAction, {})
@@ -160,7 +189,7 @@ function Cuenta({ user, isSelf }: { user: PublicStaffUser; isSelf: boolean }) {
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-[15px] font-medium text-sl-text">
             {user.name}
-            <Badge tone={user.role === 'admin' ? 'primary' : 'neutral'}>
+            <Badge tone={isAdminRole(user.role) ? 'primary' : 'neutral'}>
               {ROLE_LABEL[user.role]}
             </Badge>
             {inactive ? <Badge tone="warning">Dada de baja</Badge> : null}
@@ -176,7 +205,7 @@ function Cuenta({ user, isSelf }: { user: PublicStaffUser; isSelf: boolean }) {
 
         {/* La baja no se ofrece sobre la propia cuenta: el servidor lo rechaza
             igual, pero enseñar un botón que siempre falla es una trampa. */}
-        {isSelf ? null : (
+        {isSelf || locked ? null : (
           <form action={statusAction}>
             <input type="hidden" name="userId" value={user.id} />
             <input type="hidden" name="status" value={inactive ? 'active' : 'inactive'} />
@@ -188,6 +217,7 @@ function Cuenta({ user, isSelf }: { user: PublicStaffUser; isSelf: boolean }) {
       <FormError message={status.error} />
       <Ok message={status.ok} />
 
+      {locked ? null : (
       <details className="mt-2">
         <summary className="cursor-pointer list-none text-xs font-medium text-sl-primary hover:underline">
           <span className="inline-flex items-center gap-1.5">
@@ -265,6 +295,7 @@ function Cuenta({ user, isSelf }: { user: PublicStaffUser; isSelf: boolean }) {
           </div>
         </form>
       </details>
+      )}
     </li>
   )
 }

@@ -35,9 +35,25 @@ import {
   setTemplateItemActive,
   updateTemplateItem,
 } from '@/lib/db/checklist'
-import type { StaffRole } from '@/lib/domain/types'
+import { isAdminRole, type PublicStaffUser, type StaffRole } from '@/lib/domain/types'
 
-const ROLES: StaffRole[] = ['admin', 'lawyer']
+const ROLES: StaffRole[] = ['superadmin', 'admin', 'lawyer']
+
+/**
+ * SUPERADMIN. Un administrador no puede nombrar superadmins ni tocar sus
+ * cuentas (datos, baja, contraseña): si pudiera, podría dejar fuera a quien
+ * está por encima de él. Devuelve el error, o null si procede.
+ */
+function superadminGuard(
+  actor: PublicStaffUser,
+  target: { role: StaffRole } | null,
+  newRole?: StaffRole,
+): string | null {
+  if (actor.role === 'superadmin') return null
+  if (target?.role === 'superadmin') return 'Solo un superadmin puede modificar una cuenta superadmin.'
+  if (newRole === 'superadmin') return 'Solo un superadmin puede dar el rol de superadmin.'
+  return null
+}
 
 /** Suficiente para descartar lo que no es un correo, sin pelearse con el RFC. */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
@@ -74,6 +90,8 @@ export async function createUserAction(
   if (!name) return { error: 'Escribe el nombre de la persona.' }
   if (!EMAIL_RE.test(email)) return { error: 'Ese correo no parece válido.' }
   if (!ROLES.includes(role)) return { error: 'Elige un rol.' }
+  const denied = superadminGuard(admin, null, role)
+  if (denied) return { error: denied }
 
   const weak = validatePasswordStrength(password)
   if (weak) return { error: weak }
@@ -115,17 +133,19 @@ export async function updateUserAction(
 
   const target = await findUserById(userId)
   if (!target) return { error: 'No encontramos esa cuenta.' }
+  const denied = superadminGuard(admin, target, role)
+  if (denied) return { error: denied }
 
   if (await emailTaken(email, userId)) return { error: 'Ya hay otra cuenta con ese correo.' }
 
   // Quitarse a uno mismo el rol de admin es la forma más fácil de quedarse
   // fuera sin darse cuenta: el botón desaparece en la misma recarga.
-  if (userId === admin.id && role !== 'admin') {
+  if (userId === admin.id && !isAdminRole(role)) {
     return { error: 'No puedes quitarte a ti mismo el rol de administrador.' }
   }
   if (
-    target.role === 'admin' &&
-    role !== 'admin' &&
+    isAdminRole(target.role) &&
+    !isAdminRole(role) &&
     target.status === 'active' &&
     (await countActiveAdmins()) <= 1
   ) {
@@ -148,12 +168,14 @@ export async function setUserStatusAction(
 
   const target = await findUserById(userId)
   if (!target) return { error: 'No encontramos esa cuenta.' }
+  const denied = superadminGuard(admin, target)
+  if (denied) return { error: denied }
 
   if (status === 'inactive') {
     if (userId === admin.id) {
       return { error: 'No puedes darte de baja a ti mismo.' }
     }
-    if (target.role === 'admin' && target.status === 'active' && (await countActiveAdmins()) <= 1) {
+    if (isAdminRole(target.role) && target.status === 'active' && (await countActiveAdmins()) <= 1) {
       return { error: 'Es el único administrador activo. El portal se quedaría sin administración.' }
     }
   }
@@ -185,6 +207,8 @@ export async function setPasswordAction(
 
   const target = await findUserById(userId)
   if (!target) return { error: 'No encontramos esa cuenta.' }
+  const denied = superadminGuard(admin, target)
+  if (denied) return { error: denied }
 
   const weak = validatePasswordStrength(password)
   if (weak) return { error: weak }

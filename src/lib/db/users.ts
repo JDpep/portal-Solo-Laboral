@@ -99,7 +99,7 @@ export async function emailTaken(email: string, exceptId?: string): Promise<bool
  */
 export async function countActiveAdmins(): Promise<number> {
   const rows = await db()`
-    SELECT count(*)::int AS total FROM staff_users WHERE role = 'admin' AND status = 'active'
+    SELECT count(*)::int AS total FROM staff_users WHERE role IN ('admin', 'superadmin') AND status = 'active'
   `
   return rows[0].total as number
 }

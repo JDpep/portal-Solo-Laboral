@@ -173,6 +173,7 @@ export const EVENT_STATUS_LABEL: Record<EventStatus, string> = {
 }
 
 export const ROLE_LABEL: Record<StaffRole, string> = {
+  superadmin: 'Superadmin',
   admin: 'Administrador',
   lawyer: 'Abogado',
 }

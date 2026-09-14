@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import clsx from 'clsx'
 import { CalendarDays, ClipboardList, Handshake, History, Inbox, Users } from 'lucide-react'
-import type { StaffRole } from '@/lib/domain/types'
+import { isAdminRole, type StaffRole } from '@/lib/domain/types'
 
 /**
  * NAVEGACIÓN DEL PORTAL.
@@ -35,7 +35,7 @@ function isActive(pathname: string, href: string, exact?: boolean): boolean {
 /** Barra lateral: escritorio, que es donde se trabaja un caso. */
 export function SidebarNav({ role }: { role: StaffRole }) {
   const pathname = usePathname()
-  const items = role === 'admin' ? [...ITEMS, ...ADMIN_ITEMS] : ITEMS
+  const items = isAdminRole(role) ? [...ITEMS, ...ADMIN_ITEMS] : ITEMS
 
   return (
     <nav className="flex flex-col gap-0.5" aria-label="Secciones del portal">
@@ -71,7 +71,7 @@ export function SidebarNav({ role }: { role: StaffRole }) {
  */
 export function MobileNav({ role }: { role: StaffRole }) {
   const pathname = usePathname()
-  const items = role === 'admin' ? [...ITEMS, ...ADMIN_ITEMS] : ITEMS
+  const items = isAdminRole(role) ? [...ITEMS, ...ADMIN_ITEMS] : ITEMS
 
   return (
     <nav

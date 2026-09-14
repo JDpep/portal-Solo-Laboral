@@ -15,6 +15,7 @@ import { isUuid } from '@/lib/db/leads'
 import { recordAudit } from '@/lib/db/audit'
 import type { PlainDate } from '@/lib/dates'
 import type { SettlementFileType } from '@/lib/domain/convenio'
+import { isAdminRole } from '@/lib/domain/types'
 import type {
   CaseStatus,
   PublicStaffUser,
@@ -71,7 +72,7 @@ function rowToSummary(row: Row): SettlementSummary {
  */
 export function canManageSettlement(user: PublicStaffUser, settlement: Settlement): boolean {
   return (
-    user.role === 'admin' || settlement.lawyerId === user.id || settlement.createdBy === user.id
+    isAdminRole(user.role) || settlement.lawyerId === user.id || settlement.createdBy === user.id
   )
 }
 

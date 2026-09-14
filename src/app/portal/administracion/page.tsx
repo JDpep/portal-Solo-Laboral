@@ -30,7 +30,7 @@ export default async function AdministracionPage() {
       />
 
       <div className="space-y-5">
-        <Cuentas users={users} currentUserId={admin.id} />
+        <Cuentas users={users} currentUserId={admin.id} currentUserRole={admin.role} />
         <Plantilla template={template} />
       </div>
     </div>

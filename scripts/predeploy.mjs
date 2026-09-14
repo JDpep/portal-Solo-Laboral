@@ -47,3 +47,16 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1)
 }
 console.log('[predeploy] base al día.')
+
+// Las tres cuentas de pruebas internas entran SIEMPRE tras un despliegue
+// (ver scripts/cuentas-pruebas.mjs). Va después de migrar porque el rol
+// superadmin nace en una migración. Si no se pueden garantizar, no se despliega.
+console.log('[predeploy] garantizando las cuentas de pruebas…')
+const cuentas = spawnSync(process.execPath, ['scripts/cuentas-pruebas.mjs'], { stdio: 'inherit' })
+if (cuentas.status !== 0) {
+  console.error(
+    '[predeploy] no se pudieron garantizar las cuentas de pruebas.\n' +
+      '            ¿Está SEED_DEMO_PASSWORD en Vercel → Settings → Environment Variables (Production)?',
+  )
+  process.exit(cuentas.status ?? 1)
+}

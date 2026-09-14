@@ -47,6 +47,16 @@ cuentas del despacho antes de operar con clientes reales.**
 Fase 1, `/acceso` mostraba el usuario y la contraseña de demostración. Con
 cuentas reales eso era entregarle el portal a cualquiera que abriera la página.
 
+**Cambio (2026-09-14):** las cuentas de pruebas internas son TRES, elegidas
+por el despacho: `Superadmin@Sl.com` (superadmin), `Admin@SL.com` (admin) y
+`Abogado@SL.com` (abogado), con la contraseña de `SEED_DEMO_PASSWORD`
+(Vercel → Production). **Cada despliegue las restaura** —contraseña, rol y
+alta— en `scripts/cuentas-pruebas.mjs`, llamado por `predeploy.mjs`; si falta
+la variable, el despliegue falla. Consecuencia: cambiarles la contraseña desde
+"Mi cuenta" o Administración dura solo hasta el siguiente deploy. Las de
+`@SL.mx` quedaron dadas de baja. Nació el rol **superadmin** (migración 0011):
+lo mismo que admin, y es el único que da ese rol o toca cuentas superadmin.
+
 **Falta:** los correos reales del despacho y quién es administrador.
 
 **Si el despacho quiere administrar sus cuentas desde el portal**, es una

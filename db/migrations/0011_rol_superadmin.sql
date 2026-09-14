@@ -1,0 +1,12 @@
+-- ============================================================================
+-- ROL SUPERADMIN
+--
+-- Todo lo que puede un administrador y, además, es el único que da o quita el
+-- rol de superadmin y el único que toca las cuentas superadmin (editarlas,
+-- darlas de baja, cambiarles la contraseña). Así un administrador no puede
+-- dejar fuera a quien está por encima de él.
+--
+-- ADD VALUE puede ir dentro de la transacción de la migración (PG ≥ 12) siempre
+-- que el valor nuevo no se USE en la misma transacción: aquí no se usa.
+-- ============================================================================
+ALTER TYPE staff_role ADD VALUE IF NOT EXISTS 'superadmin';
